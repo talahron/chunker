@@ -10,3 +10,8 @@ logs/
 .idea/
 .vscode/
 .DS_Store
+
+# Service account keys - never commit these
+service_account*.json
+*-service-account*.json
+*credentials*.json
