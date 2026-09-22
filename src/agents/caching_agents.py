@@ -112,9 +112,13 @@ class DocumentCachingProcessor:
             ),
         )
         self.logger.info(f"total token number is {response.total_tokens}")
+        above_threshold = response.total_tokens > 1024
         self.logger.info(
-            f"total tokens - {response.total_tokens} is {"less then 1024" if response.total_tokens < 1024 else "higher then 1024"}"
-            f"{" - proceeding with caching" if response.total_tokens > 1024 else " cannot proceed with caching"}")
+            "total tokens - %s is %s%s",
+            response.total_tokens,
+            "higher then 1024" if response.total_tokens >= 1024 else "less then 1024",
+            " - proceeding with caching" if above_threshold else " cannot proceed with caching",
+        )
         return response.total_tokens
 
     def calculate_ttl_minutes(self,
@@ -522,7 +526,7 @@ class ContextSentenceSplitAgent:
             project=self.project_id,
             location=self.caching_location,
             http_options=HttpOptions(
-                base_url="https://europe-west4-aiplatform.googleapis.com"),
+                base_url=f"https://{self.caching_location}-aiplatform.googleapis.com"),
         )
         api = client._api_client
         logger.info("httpx clients: sync_hooks=%s async_hooks=%s",

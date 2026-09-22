@@ -1,0 +1,16 @@
+# Runtime dependencies. The deployed image (global-interpreter) is expected to
+# provide these already; this file records what the service actually imports so
+# the set can be verified against the base image.
+google-genai
+google-cloud-storage
+google-cloud-aiplatform
+google-api-core
+langchain-google-vertexai
+langchain-google-genai
+langchain-text-splitters
+pydantic
+pydantic-settings
+pydantic-ai
+numpy
+tenacity
+aiohttp

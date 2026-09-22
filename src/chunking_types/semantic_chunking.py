@@ -10,7 +10,6 @@ from __future__ import annotations
 from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 from langchain_google_vertexai import VertexAIEmbeddings
-from sklearn.metrics.pairwise import cosine_similarity
 from src.gcs_manager import GCSManager
 from src.pydantic_models import ParagraphData, ParagraphLocation
 from src.chunking_types.chunking_utils import ChunkerUtils
@@ -137,6 +136,19 @@ class SemanticChunker(ChunkerUtils):
         return await self.embedder.aembed_query(text)
 
     @staticmethod
+    def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+        """Cosine similarity of two 1-D vectors, in [-1, 1].
+
+        Computed with numpy so the service does not need scikit-learn at
+        runtime. Returns 0.0 for a zero-length vector instead of dividing
+        by zero.
+        """
+        denominator = float(np.linalg.norm(a) * np.linalg.norm(b))
+        if denominator == 0.0:
+            return 0.0
+        return float(np.dot(a, b) / denominator)
+
+    @staticmethod
     def _merge_into_chunk(chunk_sentences: List[ParagraphData],
                           chunk_id: float) -> ParagraphData:
         """Combine a list of sentences into one ParagraphData."""
@@ -208,12 +220,7 @@ class SemanticChunker(ChunkerUtils):
             sentence_embedding = np.array(await self._embed(sentence.content))
 
             # similarity - cosine similarity in [-1, 1] between the current chunk and the candidate sentence.
-            similarity = float(
-                cosine_similarity(
-                    chunk_embedding.reshape(1, -1),
-                    sentence_embedding.reshape(1, -1),
-                )[0][0]
-            )
+            similarity = self._cosine_similarity(chunk_embedding, sentence_embedding)
             # Calculating log variables to understand the current situation
             candidate_text = " ".join([chunk_text, sentence.content])
             candidate_token_count = len(candidate_text) // 4

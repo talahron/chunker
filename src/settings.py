@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.pydantic_models import ChunkingStrategy
 import logging
@@ -13,27 +14,29 @@ class Settings(BaseSettings):
     GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
     GCP_PROJECT_ID: str
     GCP_LOCATION: str
-    CACHING_LOCATION: str
+    # Helm injects this as CACHING_REGION; both names are accepted.
+    CACHING_LOCATION: str = Field(
+        validation_alias=AliasChoices("CACHING_LOCATION", "CACHING_REGION")
+    )
     EMBEDDINGS_REGION: str
     INPUT_BUCKET_NAME_INIT: str
     INPUT_BUCKET_NAME_INIT_PDF: str
-    INPUT_BUCKET_NAME: str = None
-    INPUT_BUCKET_NAME_PDF: str = None
+    INPUT_BUCKET_NAME: str = ""  # derived in __init__
+    INPUT_BUCKET_NAME_PDF: str = ""  # derived in __init__
     PROJECT_NAME: str
     FILE_NAME: str
-    FILE_NAME_PDF: str = None
+    FILE_NAME_PDF: str = ""  # derived in __init__
     MODEL_NAME: str
     MODEL_NAME_ENRICHMENT_CHUNKER: str
     THINKING_BUDGET_ENRICHMENT_CHUNKER: int
     MAX_TOKENS: int
     MIN_TOKENS: int
     INDEX_MAPPING_BUCKET:str
-    VECTOR_BUCKET_NAME: str
     INDEX_MAPPING_JSON_FILE: str
     EMBEDDINGS_MODEL_NAME: str
     INDEX_REGION: str
     VECTOR_BUCKET_NAME_INIT: str
-    VECTOR_BUCKET_NAME: str = None
+    VECTOR_BUCKET_NAME: str = ""  # derived in __init__
     KNOWLEDGEBASE_BUCKET_NAME_INIT: str
     KNOWLEDGEBASE_BUCKET_NAME: str = ""
     CHUNKING_STRATEGY: ChunkingStrategy
@@ -46,7 +49,7 @@ class Settings(BaseSettings):
     SEMANTIC_MIN_TOKENS_PER_CHUNK: int
     CLUSTER_MIN_TOKENS_PER_SENTENCE: int
     CHARACTER_MAX_CHARS: int
-    CHARACTER_OVERLAP: int
+    CHARACTER_OVERLAP: int = 0  # reserved; not used by CharacterChunker today
     PROMPTS_DIR: Path = BASE_DIR / "prompts"
 
     def __init__(self, **kwargs):
@@ -63,6 +66,7 @@ class Settings(BaseSettings):
         env_file=BASE_DIR / ".dev_env" if os.getenv("DEV") else BASE_DIR / ".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",
     )
 
     def _load_credentials(self):
