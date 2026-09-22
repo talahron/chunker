@@ -106,7 +106,6 @@ class ClusterSemanticChunker(ChunkerUtils):
             project_id=self.project_id,
             google_provider_region=self.google_provider_region,
             caching_location=self.caching_location,
-            knowledgebase_bucket_name=self.knowledgebase_bucket_name,
             path_to_system_prompt=self.prompts_dir / "context_sentence_split.md",
             path_to_batch_prompt=self.prompts_dir / "context_sentence_batch.md",
             path_to_document_prompt=self.prompts_dir / "context_sentence_document.md",
@@ -128,6 +127,7 @@ class ClusterSemanticChunker(ChunkerUtils):
             project_id=self.project_id,
             google_provider_region=self.google_provider_region,
             caching_location=self.caching_location,
+            knowledgebase_bucket_name=self.knowledgebase_bucket_name,
             path_to_enrichment_prompt=(
                     self.prompts_dir / "document_context_enrichment.md"
             ),

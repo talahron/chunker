@@ -150,7 +150,7 @@ class CharacterChunker(ChunkerUtils):
         buffer_objects: List[DocumentObject] = []
 
         for obj in document:
-            text = re.sub("\s+", " ", obj.content).strip()
+            text = re.sub(r"\s+", " ", obj.content).strip()
 
             # Skip empty objects so they don't pollute the chunk's metadata
             # without contributing any actual text.
