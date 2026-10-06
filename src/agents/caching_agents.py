@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -28,6 +29,7 @@ from src.exceptions import (
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
+    DocumentTags,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,
@@ -48,6 +50,7 @@ class DocumentCachingProcessor:
     knowledgebase_bucket_name: str
     path_to_enrichment_prompt: Path
     knowledgebase_agent_prompt_paths: list[tuple[str, Path]]
+    tagging_agent_prompt_paths: list[tuple[str, Path]]
     thinking_budget_enrichment_chunks: int = 128
     max_concurrent: int = 10
     bucket_name_pdf: Optional[str] = None
@@ -60,6 +63,16 @@ class DocumentCachingProcessor:
         self.knowledgebase_agents = [
             (agent_name, Path(prompt_path).read_text(encoding="utf-8"))
             for agent_name, prompt_path in self.knowledgebase_agent_prompt_paths
+        ]
+        # Each tagging agent fills the DocumentTags field it is named after, so
+        # its answer is constrained to that field's Enum. A bad name fails here.
+        self.tagging_agents = [
+            (
+                tag_name,
+                DocumentTags.model_fields[tag_name].annotation,
+                Path(prompt_path).read_text(encoding="utf-8"),
+            )
+            for tag_name, prompt_path in self.tagging_agent_prompt_paths
         ]
         self.logger = setup_logger(self.__class__.__name__)
         self.gemini_client = self._initialize_client()
@@ -387,10 +400,63 @@ class DocumentCachingProcessor:
             exc.add_note(f"Document agent: {agent_name}")
             raise
 
+    @retry(wait=wait_random_exponential(multiplier=1, max=60),
+           stop=stop_after_attempt(3),
+           retry=retry_if_exception(_is_retryable),
+           reraise=True)
+    async def run_tagging_agent(
+            self,
+            *,
+            tag_name: str,
+            tag_enum: type[Enum],
+            agent_prompt: str,
+            gcs_uri: str,
+            cached_content: Optional[types.CachedContent] = None,
+    ) -> Enum:
+        """Classify the whole document into one member of tag_enum."""
+        cache_name = cached_content.name if cached_content is not None else None
+
+        parts = [types.Part.from_text(text=agent_prompt)]
+
+        # Without a cache, attach the PDF directly.
+        if cached_content is None:
+            parts.append(
+                types.Part.from_uri(
+                    file_uri=gcs_uri,
+                    mime_type="application/pdf",
+                )
+            )
+
+        self.logger.info("Starting tagging agent: %s", tag_name)
+
+        response = await self.gemini_client.aio.models.generate_content(
+            model=self.model_name,
+            contents=[types.Content(role="user", parts=parts)],
+            config=types.GenerateContentConfig(
+                cached_content=cache_name,
+                thinking_config=types.ThinkingConfig(
+                    thinking_budget=self.thinking_budget_enrichment_chunks
+                ),
+                temperature=0.0,
+                # The model can answer only one of the Enum values.
+                response_mime_type="text/x.enum",
+                response_schema=tag_enum,
+            ),
+        )
+
+        # The SDK leaves parsed as None when the answer is not an Enum value.
+        if response.parsed is None:
+            raise ModelValidateSchemaError(
+                f"Tagging agent {tag_name} returned an invalid value: {response.text!r}"
+            )
+
+        self.logger.info("Tagging agent %s: %s", tag_name, response.parsed.value)
+        return response.parsed
+
     async def enrich_chunks_pipeline(self,
                                      *,
                                      chunks: List[ParagraphData],
-                                     ttl_minutes: int = None) -> List[ParagraphData]:
+                                     ttl_minutes: int = None) -> tuple[List[ParagraphData], DocumentTags]:
         """pipeline for processing chunks using context caching process"""
 
         # STEP 1 - CREATE THE URI
@@ -442,9 +508,40 @@ class DocumentCachingProcessor:
                     "Document agents failed; continuing to chunk enrichment."
                 )
 
+            # STEP 5 - RUN DOCUMENT TAGGING AGENTS
+            # The tags are independent: a failed agent keeps its default tag
+            # without cancelling the others, so gather instead of a TaskGroup.
+            tag_results = await asyncio.gather(
+                *(
+                    self.run_tagging_agent(
+                        tag_name=tag_name,
+                        tag_enum=tag_enum,
+                        agent_prompt=agent_prompt,
+                        gcs_uri=gcs_uri,
+                        cached_content=cached_content,
+                    )
+                    for tag_name, tag_enum, agent_prompt in self.tagging_agents
+                ),
+                return_exceptions=True,
+            )
+
+            extracted_tags = {}
+            for (tag_name, _, _), result in zip(self.tagging_agents, tag_results):
+                if isinstance(result, BaseException):
+                    self.logger.error(
+                        "Tagging agent %s failed; using the default tag: %s",
+                        tag_name,
+                        result,
+                    )
+                else:
+                    extracted_tags[tag_name] = result
+
+            document_tags = DocumentTags.model_validate(extracted_tags)
+            self.logger.info("Document tags: %s", document_tags.model_dump(mode="json"))
+
             semaphore = asyncio.Semaphore(self.max_concurrent)
 
-            # STEP 5 - ENRICH THE CHUNKS
+            # STEP 6 - ENRICH THE CHUNKS
             tasks = [
                 self.enrich_chunk(
                     semaphore=semaphore,
@@ -457,7 +554,7 @@ class DocumentCachingProcessor:
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # STEP 6 - COLLECT AND SORT THE ENRICHED CHUNKS
+            # STEP 7 - COLLECT AND SORT THE ENRICHED CHUNKS
             enriched_chunks: list[ParagraphData] = []
             errors: list[tuple[int, Exception]] = []
 
@@ -476,10 +573,10 @@ class DocumentCachingProcessor:
             if errors:
                 self.logger.info(f"\n{len(errors)}/{len(chunks)} chunks failed.")
 
-            return enriched_chunks_sorted
+            return enriched_chunks_sorted, document_tags
 
         finally:
-            # STEP 7 - DELETE THE CACHE IF ONE WAS CREATED
+            # STEP 8 - DELETE THE CACHE IF ONE WAS CREATED
             if cached_content:
                 await self.gemini_client.aio.caches.delete(name=cached_content.name)
                 self.logger.info(f"Cache deleted for {self.blob_path_pdf}.")

@@ -113,6 +113,10 @@ class SemanticChunker(ChunkerUtils):
                 ("general", self.prompts_dir / "knowledgebase_general.md"),
                 ("extended", self.prompts_dir / "knowledgebase_extended.md"),
             ],
+            tagging_agent_prompt_paths=[
+                ("document_subject", self.prompts_dir / "tagging_document_subject.md"),
+                ("document_type", self.prompts_dir / "tagging_document_type.md"),
+            ],
             bucket_name_pdf=self.input_bucket_name_pdf,
             blob_path_pdf=self.file_name_pdf,
         )
@@ -285,14 +289,14 @@ class SemanticChunker(ChunkerUtils):
 
         # 5) Enrich each chunk with PDF context.
         self.logger.info("Context caching enrichment: START")
-        enriched_chunks = await self.context_caching_agent.enrich_chunks_pipeline(
+        enriched_chunks, document_tags = await self.context_caching_agent.enrich_chunks_pipeline(
             chunks=semantic_chunks
         )
         self.logger.info("Context caching enrichment: END")
 
         # 6) Build (contents, metadata) for the indexer.
         self.logger.info("Build content and metadata: START")
-        contents, metadata = await self._build_content_and_metadata(enriched_chunks)
+        contents, metadata = await self._build_content_and_metadata(enriched_chunks, document_tags)
         self.logger.info("Build content and metadata: END")
 
         self.logger.info(f"SemanticChunker pipeline: DONE ({len(contents)} chunks)")

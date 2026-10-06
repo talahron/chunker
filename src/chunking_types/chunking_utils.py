@@ -3,7 +3,7 @@ from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 from src.exceptions import ObjectJsonDownloadError, BatchPredictionError, SummarizerAgentError
 from src.pydantic_models import (
-    DocumentObject, Chunk, ChunkMetaData, ObjectMetaData, ParagraphData,
+    DocumentObject, Chunk, ChunkMetaData, DocumentTags, ObjectMetaData, ParagraphData,
     ParagraphType, ParagraphPageNumber, ParagraphLocation,
 )
 from langchain_google_vertexai import VertexAIEmbeddings
@@ -95,6 +95,7 @@ class ChunkerUtils:
 
     async def _build_content_and_metadata(self,
                                           agentic_paragraphs: list[ParagraphData],
+                                          document_tags: DocumentTags,
                                           contents: list[str] = None,
                                           metadata: list[ChunkMetaData] = None) -> Tuple[List[str], List[ChunkMetaData]]:
         if contents is None:
@@ -110,13 +111,17 @@ class ChunkerUtils:
             pages = str(sorted({page.page_number for page in chunk.pages if page.page_number is not None}))
             # save the file name in separate value
             file_name = chunk.file_name if chunk.file_name is not None else ""
+            # the document tags exist only after enrichment, so this is where they join the chunk
+            chunk.document_tags = document_tags
             metadata.append(
                 ChunkMetaData(
                     file_name=file_name,
                     chunk_number=chunk.object_id,
                     pages=pages,
+                    **chunk.document_tags.model_dump(),
                 )
             )
-        metadata_json_schema = [m.model_dump() for m in metadata]
+        # mode="json" turns the Enum members into plain strings for the vector store
+        metadata_json_schema = [m.model_dump(mode="json") for m in metadata]
         self.logger.info(f"Chunks and Metadata build complete successfully. number of chunks {len(contents)}.")
         return contents, metadata_json_schema

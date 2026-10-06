@@ -1,5 +1,6 @@
 from typing import List, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.json_schema import SkipJsonSchema
 from enum import Enum
 
 class DocumentObject(BaseModel):
@@ -29,7 +30,42 @@ class Chunk(BaseModel):
         # ~4 chars per token (Hebrew heuristic)
         return len(self.content) // 4
 
-class ChunkMetaData(BaseModel):
+# --- Document tags ---
+# Placeholder values - replace them with the real lists.
+# OTHER is both the LLM's answer when nothing fits and the fallback when a
+# tagging agent fails, so keep it in every list.
+class DocumentSubject(str, Enum):
+    CRIMINAL_LAW = "criminal_law"
+    CIVIL_LAW = "civil_law"
+    ADMINISTRATIVE_LAW = "administrative_law"
+    LABOR_LAW = "labor_law"
+    FAMILY_LAW = "family_law"
+    REAL_ESTATE = "real_estate"
+    TAXATION = "taxation"
+    OTHER = "other"
+
+class DocumentType(str, Enum):
+    COURT_RULING = "court_ruling"
+    LEGISLATION = "legislation"
+    CONTRACT = "contract"
+    LEGAL_OPINION = "legal_opinion"
+    CORRESPONDENCE = "correspondence"
+    FORM = "form"
+    MEETING_PROTOCOL = "meeting_protocol"
+    OTHER = "other"
+
+class DocumentTags(BaseModel):
+    """Document-level tags, extracted once per document and spread onto every chunk.
+
+    Each field is filled by the tagging agent of the same name, whose answer is
+    constrained to the field's Enum.
+    """
+    model_config = ConfigDict(frozen=True)  # one instance is shared by all the chunks
+
+    document_subject: DocumentSubject = Field(default=DocumentSubject.OTHER, description="The main subject of the document")
+    document_type: DocumentType = Field(default=DocumentType.OTHER, description="The kind of the document")
+
+class ChunkMetaData(DocumentTags):
     file_name: str
     chunk_number: float
     pages: str
@@ -60,6 +96,9 @@ class ParagraphData(BaseModel):
     pages: list[ParagraphPageNumber] = Field(..., description="Aggregated page numbers from which the paragraph's content was sourced")
     content: str = Field(..., description="Aggregated text of a paragraph")
     location: list[ParagraphLocation] = Field(..., description="The positions of the contents on the page")
+    # Known only after enrichment. Hidden from the JSON schema so the agentic
+    # LLM, which answers with this model, is never asked to fill it.
+    document_tags: SkipJsonSchema[Optional[DocumentTags]] = None
 
 class AgenticResponse(BaseModel):
     """The expected response format from using agentic chunking"""

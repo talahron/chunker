@@ -91,6 +91,12 @@ class AgenticChunker(ChunkerUtils):
                                                                   ("extended",
                                                                    self.prompts_dir / "knowledgebase_extended.md"),
                                                               ],
+                                                              tagging_agent_prompt_paths=[
+                                                                  ("document_subject",
+                                                                   self.prompts_dir / "tagging_document_subject.md"),
+                                                                  ("document_type",
+                                                                   self.prompts_dir / "tagging_document_type.md"),
+                                                              ],
                                                               bucket_name_pdf=self.input_bucket_name_pdf,
                                                               blob_path_pdf=self.file_name_pdf)
         self.storage = GCSManager()
@@ -153,12 +159,12 @@ class AgenticChunker(ChunkerUtils):
 
         # add context caching to the agentic paragraphs
         self.logger.info("Add context caching to the agentic paragraphs: START")
-        agentic_paragraphs = await self.context_caching_agent.enrich_chunks_pipeline(chunks=agentic_paragraphs)
+        agentic_paragraphs, document_tags = await self.context_caching_agent.enrich_chunks_pipeline(chunks=agentic_paragraphs)
         self.logger.info("Add context caching to the agentic paragraphs: END")
 
         # build the content and metadata
         self.logger.info("Build content and metadata: START")
-        contents, metadata = await self._build_content_and_metadata(agentic_paragraphs)
+        contents, metadata = await self._build_content_and_metadata(agentic_paragraphs, document_tags)
         self.logger.info("Build content and metadata: END")
 
         return contents, metadata
