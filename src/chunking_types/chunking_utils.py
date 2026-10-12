@@ -115,8 +115,11 @@ class ChunkerUtils:
                     file_name=file_name,
                     chunk_number=chunk.object_id,
                     pages=pages,
+                    **chunk.document_tags.model_dump(),
                 )
             )
-        metadata_json_schema = [m.model_dump() for m in metadata]
+        # mode="json" turns the tag enums into plain strings (vector search restricts),
+        # exclude_none drops tags whose agent failed
+        metadata_json_schema = [m.model_dump(mode="json", exclude_none=True) for m in metadata]
         self.logger.info(f"Chunks and Metadata build complete successfully. number of chunks {len(contents)}.")
         return contents, metadata_json_schema

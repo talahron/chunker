@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any, List, Optional
 
 from google import genai
-from google.api_core.exceptions import InvalidArgument
+from google.api_core.exceptions import InvalidArgument, PreconditionFailed
 from google.cloud import storage
 from google.genai import errors as genai_errors
 from google.genai import types
 from google.genai.types import HttpOptions
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from tenacity import (
     retry,
     retry_if_exception,
@@ -28,6 +28,7 @@ from src.exceptions import (
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
+    DocumentTags,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,
@@ -36,6 +37,7 @@ from src.pydantic_models import (
 )
 
 logger = setup_logger(__name__)
+KNOWLEDGEBASE_UPDATE_ATTEMPTS = 3
 
 # ----- Agent 4: Context Caching with Gemini for Chunk Enrichment
 @dataclass
@@ -48,6 +50,7 @@ class DocumentCachingProcessor:
     knowledgebase_bucket_name: str
     path_to_enrichment_prompt: Path
     knowledgebase_agent_prompt_paths: list[tuple[str, Path]]
+    document_tagging_agent_prompt_paths: list[tuple[type[BaseModel], Path]]
     thinking_budget_enrichment_chunks: int = 128
     max_concurrent: int = 10
     bucket_name_pdf: Optional[str] = None
@@ -61,6 +64,10 @@ class DocumentCachingProcessor:
             (agent_name, Path(prompt_path).read_text(encoding="utf-8"))
             for agent_name, prompt_path in self.knowledgebase_agent_prompt_paths
         ]
+        self.document_tagging_agents = [
+            (tag_schema, Path(prompt_path).read_text(encoding="utf-8"))
+            for tag_schema, prompt_path in self.document_tagging_agent_prompt_paths
+        ]
         self.logger = setup_logger(self.__class__.__name__)
         self.gemini_client = self._initialize_client()
         self.storage_client = storage.Client()
@@ -71,7 +78,7 @@ class DocumentCachingProcessor:
             project=self.project_id,
             location=self.caching_location,
             http_options=HttpOptions(
-                base_url=f"https://{self.caching_location}-aiplatform.googleapis.com",
+                base_url=f"https://aiplatform.{self.caching_location}.rep.googleapis.com",
             ),
         )
         api = client._api_client
@@ -297,24 +304,72 @@ class DocumentCachingProcessor:
 
         if blob is None:
             blob = bucket.blob(file_name)
-            blob.upload_from_string(
-                "",
-                content_type="text/plain",
-                if_generation_match=0,
-            )
+            try:
+                blob.upload_from_string(
+                    "",
+                    content_type="text/plain",
+                    if_generation_match=0,
+                )
+            except PreconditionFailed:
+                blob = bucket.get_blob(file_name)
+                if blob is None:
+                    raise
 
         return blob
 
-
     def _save_knowledgebase(self, blob: storage.Blob, content: str) -> None:
         """Replace the knowledge base file with the validated Markdown."""
-        blob.upload_from_string(content, content_type="text/plain")
+        if blob.generation is None:
+            blob.reload()
+        blob.upload_from_string(
+            content,
+            content_type="text/plain",
+            if_generation_match=blob.generation,
+        )
         self.logger.info(
             "Knowledge base saved: gs://%s/%s | characters=%d",
             blob.bucket.name,
             blob.name,
             len(content),
         )
+
+    async def _save_knowledgebase_with_retry(
+            self,
+            *,
+            agent_name: str,
+            agent_prompt: str,
+            gcs_uri: str,
+            knowledgebase_blob: storage.Blob,
+            content: str,
+            cached_content: Optional[types.CachedContent] = None,
+    ) -> None:
+        """Re-run an agent against fresh context when another worker wins a write."""
+        blob = knowledgebase_blob
+        updated_content = content
+
+        for attempt in range(1, KNOWLEDGEBASE_UPDATE_ATTEMPTS + 1):
+            try:
+                self._save_knowledgebase(blob, updated_content)
+                return
+            except PreconditionFailed:
+                if attempt == KNOWLEDGEBASE_UPDATE_ATTEMPTS:
+                    raise
+
+                self.logger.warning(
+                    "Knowledge base changed while processing %s; refreshing attempt %d/%d",
+                    agent_name,
+                    attempt + 1,
+                    KNOWLEDGEBASE_UPDATE_ATTEMPTS,
+                )
+                await asyncio.sleep(attempt)
+                blob = self._prepare_knowledgebase(blob.name)
+                updated_content = await self.run_knowledgebase_agent(
+                    agent_name=agent_name,
+                    agent_prompt=agent_prompt,
+                    gcs_uri=gcs_uri,
+                    knowledgebase_blob=blob,
+                    cached_content=cached_content,
+                )
 
     async def run_knowledgebase_agent(
             self,
@@ -387,6 +442,90 @@ class DocumentCachingProcessor:
             exc.add_note(f"Document agent: {agent_name}")
             raise
 
+    @retry(wait=wait_random_exponential(multiplier=1, max=60),
+           stop=stop_after_attempt(3),
+           retry=retry_if_exception(_is_retryable),
+           reraise=True)
+    async def run_document_tagging_agent(
+            self,
+            *,
+            tag_schema: type[BaseModel],
+            agent_prompt: str,
+            gcs_uri: str,
+            cached_content: Optional[types.CachedContent] = None,
+    ) -> BaseModel:
+        """Run one tagging task over the whole document; the schema restricts the tag to its enum."""
+        cache_name = cached_content.name if cached_content is not None else None
+
+        parts = [types.Part.from_text(text=agent_prompt)]
+        # Without a cache, attach the PDF directly.
+        if cached_content is None:
+            parts.append(
+                types.Part.from_uri(
+                    file_uri=gcs_uri,
+                    mime_type="application/pdf",
+                )
+            )
+
+        self.logger.info("Starting document tagging agent: %s", tag_schema.__name__)
+
+        response = await self.gemini_client.aio.models.generate_content(
+            model=self.model_name,
+            contents=[types.Content(role="user", parts=parts)],
+            config=types.GenerateContentConfig(
+                cached_content=cache_name,
+                thinking_config=types.ThinkingConfig(
+                    thinking_budget=self.thinking_budget_enrichment_chunks
+                ),
+                temperature=0.0,
+                response_mime_type="application/json",
+                response_schema=tag_schema,
+            ),
+        )
+
+        # parsed is None when the response does not match the schema (e.g. a value outside the enum)
+        if not isinstance(response.parsed, tag_schema):
+            raise ModelValidateSchemaError(
+                f"Document tagging agent {tag_schema.__name__} returned an invalid response"
+            )
+
+        self.logger.info("Document tagging agent %s returned %s", tag_schema.__name__, response.parsed)
+        return response.parsed
+
+    async def tag_document(
+            self,
+            *,
+            gcs_uri: str,
+            cached_content: Optional[types.CachedContent] = None,
+    ) -> DocumentTags:
+        """Run all tagging agents concurrently and merge their tags; a failed agent leaves its tag empty."""
+        results = await asyncio.gather(
+            *[
+                self.run_document_tagging_agent(
+                    tag_schema=tag_schema,
+                    agent_prompt=agent_prompt,
+                    gcs_uri=gcs_uri,
+                    cached_content=cached_content,
+                )
+                for tag_schema, agent_prompt in self.document_tagging_agents
+            ],
+            return_exceptions=True,
+        )
+
+        tags = {}
+        for (tag_schema, _), result in zip(self.document_tagging_agents, results):
+            if isinstance(result, Exception):
+                self.logger.error(
+                    f"Document tagging agent {tag_schema.__name__} failed for {self.blob_path_pdf}; "
+                    f"continuing without its tag: {result}"
+                )
+                continue
+            tags.update(result.model_dump())
+
+        document_tags = DocumentTags.model_validate(tags)
+        self.logger.info(f"Document tags for {self.blob_path_pdf}: {document_tags}")
+        return document_tags
+
     async def enrich_chunks_pipeline(self,
                                      *,
                                      chunks: List[ParagraphData],
@@ -400,7 +539,7 @@ class DocumentCachingProcessor:
         num_tokens = await self._count_tokens(gcs_uri=gcs_uri)
 
         # Estimate TTL from chunk count when the existing token threshold is met.
-        if ttl_minutes is None and num_tokens > 1024:
+        if ttl_minutes is None and num_tokens > 4096:
             ttl_minutes = self.calculate_ttl_minutes(num_chunks=len(chunks))
 
         # STEP 3 - CREATE THE PDF CACHE IF TTL IS AVAILABLE
@@ -430,21 +569,38 @@ class DocumentCachingProcessor:
                             name=agent_name,
                         )
 
-                # Save only after all document agents pass validation.
-                for agent_name, task in document_tasks.items():
-                    self._save_knowledgebase(
-                        blob=knowledgebase_files[agent_name],
-                        content=task.result(),
-                    )
+                # Save only after all document agents pass validation. Generation
+                # preconditions prevent concurrent workers from losing an update.
+                async with asyncio.TaskGroup() as task_group:
+                    for agent_name, agent_prompt in self.knowledgebase_agents:
+                        task_group.create_task(
+                            self._save_knowledgebase_with_retry(
+                                agent_name=agent_name,
+                                agent_prompt=agent_prompt,
+                                gcs_uri=gcs_uri,
+                                knowledgebase_blob=knowledgebase_files[agent_name],
+                                content=document_tasks[agent_name].result(),
+                                cached_content=cached_content,
+                            ),
+                            name=f"save-{agent_name}",
+                        )
 
             except* Exception:
                 self.logger.exception(
                     "Document agents failed; continuing to chunk enrichment."
                 )
 
+            # STEP 5 - TAG THE DOCUMENT AND SPREAD ITS TAGS TO ALL OF ITS CHUNKS
+            document_tags = await self.tag_document(
+                gcs_uri=gcs_uri,
+                cached_content=cached_content,
+            )
+            for chunk in chunks:
+                chunk.document_tags = document_tags
+
             semaphore = asyncio.Semaphore(self.max_concurrent)
 
-            # STEP 5 - ENRICH THE CHUNKS
+            # STEP 6 - ENRICH THE CHUNKS
             tasks = [
                 self.enrich_chunk(
                     semaphore=semaphore,
@@ -457,7 +613,7 @@ class DocumentCachingProcessor:
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # STEP 6 - COLLECT AND SORT THE ENRICHED CHUNKS
+            # STEP 7 - COLLECT AND SORT THE ENRICHED CHUNKS
             enriched_chunks: list[ParagraphData] = []
             errors: list[tuple[int, Exception]] = []
 
@@ -479,7 +635,7 @@ class DocumentCachingProcessor:
             return enriched_chunks_sorted
 
         finally:
-            # STEP 7 - DELETE THE CACHE IF ONE WAS CREATED
+            # STEP 8 - DELETE THE CACHE IF ONE WAS CREATED
             if cached_content:
                 await self.gemini_client.aio.caches.delete(name=cached_content.name)
                 self.logger.info(f"Cache deleted for {self.blob_path_pdf}.")

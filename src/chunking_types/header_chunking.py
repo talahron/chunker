@@ -6,6 +6,7 @@ from src.exceptions import PipelineTaskExecutorError, LargeChunksSplitAgentError
 from src.pydantic_models import (
     DocumentObject, Chunk, ObjectMetaData, ParagraphData,
     ParagraphType, ParagraphPageNumber, ParagraphLocation,
+    DocumentSubjectTag, DocumentTypeTag,
 )
 from src.agents.caching_agents import DocumentCachingProcessor
 from src.agents.regular_agents import LargeChunksSplitAgent
@@ -96,6 +97,10 @@ class HeaderChunker(ChunkerUtils):
             knowledgebase_agent_prompt_paths=[
                 ("general", self.prompts_dir / "knowledgebase_general.md"),
                 ("extended", self.prompts_dir / "knowledgebase_extended.md"),
+            ],
+            document_tagging_agent_prompt_paths=[
+                (DocumentSubjectTag, self.prompts_dir / "document_tagging_subject.md"),
+                (DocumentTypeTag, self.prompts_dir / "document_tagging_type.md"),
             ],
             bucket_name_pdf=self.input_bucket_name_pdf,
             blob_path_pdf=self.file_name_pdf,

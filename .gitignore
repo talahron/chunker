@@ -15,3 +15,4 @@ logs/
 service_account*.json
 *-service-account*.json
 *credentials*.json
+.pytest_cache/
