@@ -8,10 +8,8 @@ from src.agents.caching_agents import DocumentCachingProcessor
 from src.chunking_types.chunking_utils import ChunkerUtils
 from src.exceptions import ModelValidateSchemaError
 from src.pydantic_models import (
-    AgenticResponse,
     DocumentSubject,
     DocumentSubjectTag,
-    DocumentTags,
     DocumentType,
     DocumentTypeTag,
     ParagraphData,
@@ -46,16 +44,15 @@ def make_processor():
     return processor
 
 
-class DocumentTagsModelTest(unittest.TestCase):
-    def test_tags_are_hidden_from_the_agentic_llm_schema(self):
-        self.assertNotIn("document_tags", str(AgenticResponse.model_json_schema()))
-
+class DocumentTagModelsTest(unittest.TestCase):
     def test_paragraph_defaults_to_empty_tags(self):
-        self.assertEqual(make_chunk(1.0).document_tags, DocumentTags())
+        chunk = make_chunk(1.0)
+        self.assertIsNone(chunk.document_subject)
+        self.assertIsNone(chunk.document_type)
 
-    def test_every_tag_schema_field_exists_on_document_tags(self):
+    def test_every_tag_schema_field_exists_on_paragraph_data(self):
         for tag_schema in (DocumentSubjectTag, DocumentTypeTag):
-            self.assertLessEqual(set(tag_schema.model_fields), set(DocumentTags.model_fields))
+            self.assertLessEqual(set(tag_schema.model_fields), set(ParagraphData.model_fields))
 
     def test_tag_rejects_values_outside_the_enum(self):
         with self.assertRaises(ValueError):
@@ -76,10 +73,10 @@ class TagDocumentTest(unittest.IsolatedAsyncioTestCase):
 
         tags = await processor.tag_document(gcs_uri="gs://pdf/document.pdf")
 
-        self.assertEqual(tags, DocumentTags(
-            document_subject=DocumentSubject.LABOR_LAW,
-            document_type=DocumentType.VERDICT,
-        ))
+        self.assertEqual(tags, {
+            "document_subject": DocumentSubject.LABOR_LAW,
+            "document_type": DocumentType.VERDICT,
+        })
 
     async def test_failed_agent_leaves_only_its_tag_empty(self):
         processor = make_processor()
@@ -90,7 +87,7 @@ class TagDocumentTest(unittest.IsolatedAsyncioTestCase):
 
         tags = await processor.tag_document(gcs_uri="gs://pdf/document.pdf")
 
-        self.assertEqual(tags, DocumentTags(document_type=DocumentType.CONTRACT))
+        self.assertEqual(tags, {"document_type": DocumentType.CONTRACT})
 
     async def test_agent_uses_cache_and_enum_schema(self):
         processor = make_processor()
@@ -145,19 +142,21 @@ class PipelineTaggingTest(unittest.IsolatedAsyncioTestCase):
         processor._upload_pdf_file_to_memory = MagicMock(return_value=("gs://pdf/document.pdf", None))
         processor._count_tokens = AsyncMock(return_value=100)
         processor._prepare_knowledgebase = MagicMock()
-        tags = DocumentTags(document_subject=DocumentSubject.CRIMINAL_LAW,
-                            document_type=DocumentType.VERDICT)
-        processor.tag_document = AsyncMock(return_value=tags)
+        # the subject agent failed - a value guessed earlier by the chunking LLM must be cleared
+        processor.tag_document = AsyncMock(return_value={"document_type": DocumentType.VERDICT})
+        guessed = make_chunk(2.0)
+        guessed.document_subject = DocumentSubject.OTHER
 
         async def enrich_chunk(*, chunk, **_):
-            self.assertEqual(chunk.document_tags, tags)
+            self.assertEqual(chunk.document_type, DocumentType.VERDICT)
             return chunk
 
         processor.enrich_chunk = enrich_chunk
 
-        chunks = await processor.enrich_chunks_pipeline(chunks=[make_chunk(2.0), make_chunk(1.0)])
+        chunks = await processor.enrich_chunks_pipeline(chunks=[guessed, make_chunk(1.0)])
 
-        self.assertEqual([c.document_tags for c in chunks], [tags, tags])
+        self.assertEqual([c.document_type for c in chunks], [DocumentType.VERDICT] * 2)
+        self.assertEqual([c.document_subject for c in chunks], [None, None])
         processor.tag_document.assert_awaited_once_with(
             gcs_uri="gs://pdf/document.pdf", cached_content=None
         )
@@ -168,10 +167,10 @@ class BuildMetadataTest(unittest.IsolatedAsyncioTestCase):
         utils = ChunkerUtils()
         utils.logger = MagicMock()
         tagged = make_chunk(1.0)
-        tagged.document_tags = DocumentTags(document_subject=DocumentSubject.CIVIL_LAW,
-                                            document_type=DocumentType.CONTRACT)
+        tagged.document_subject = DocumentSubject.CIVIL_LAW
+        tagged.document_type = DocumentType.CONTRACT
         partial = make_chunk(2.0)
-        partial.document_tags = DocumentTags(document_type=DocumentType.CONTRACT)
+        partial.document_type = DocumentType.CONTRACT
 
         _, metadata = await utils._build_content_and_metadata([tagged, partial])
 
@@ -191,8 +190,8 @@ class BuildMetadataTest(unittest.IsolatedAsyncioTestCase):
         utils = ChunkerUtils()
         utils.logger = MagicMock()
         chunk = make_chunk(1.0)
-        chunk.document_tags = DocumentTags(document_subject=DocumentSubject.LABOR_LAW,
-                                           document_type=DocumentType.PROCEDURE)
+        chunk.document_subject = DocumentSubject.LABOR_LAW
+        chunk.document_type = DocumentType.PROCEDURE
         _, metadata = await utils._build_content_and_metadata([chunk])
 
         [point] = to_data_points(ids=["id"], embeddings=[[0.1]], metadatas=metadata)

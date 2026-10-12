@@ -28,7 +28,6 @@ from src.exceptions import (
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
-    DocumentTags,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,
@@ -497,8 +496,8 @@ class DocumentCachingProcessor:
             *,
             gcs_uri: str,
             cached_content: Optional[types.CachedContent] = None,
-    ) -> DocumentTags:
-        """Run all tagging agents concurrently and merge their tags; a failed agent leaves its tag empty."""
+    ) -> dict[str, Any]:
+        """Run all tagging agents concurrently and merge their tags; a failed agent's tag is missing."""
         results = await asyncio.gather(
             *[
                 self.run_document_tagging_agent(
@@ -522,9 +521,8 @@ class DocumentCachingProcessor:
                 continue
             tags.update(result.model_dump())
 
-        document_tags = DocumentTags.model_validate(tags)
-        self.logger.info(f"Document tags for {self.blob_path_pdf}: {document_tags}")
-        return document_tags
+        self.logger.info(f"Document tags for {self.blob_path_pdf}: {tags}")
+        return tags
 
     async def enrich_chunks_pipeline(self,
                                      *,
@@ -596,7 +594,8 @@ class DocumentCachingProcessor:
                 cached_content=cached_content,
             )
             for chunk in chunks:
-                chunk.document_tags = document_tags
+                chunk.document_subject = document_tags.get("document_subject")
+                chunk.document_type = document_tags.get("document_type")
 
             semaphore = asyncio.Semaphore(self.max_concurrent)
 
