@@ -483,7 +483,7 @@ class DocumentCachingProcessor:
         )
 
         # parsed is None when the response does not match the schema (e.g. a value outside the enum)
-        if not isinstance(response.parsed, tag_schema):
+        if response.parsed is None:
             raise ModelValidateSchemaError(
                 f"Document tagging agent {tag_schema.__name__} returned an invalid response"
             )
