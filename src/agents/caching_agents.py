@@ -11,7 +11,7 @@ from google.cloud import storage
 from google.genai import errors as genai_errors
 from google.genai import types
 from google.genai.types import HttpOptions
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from tenacity import (
     retry,
     retry_if_exception,
@@ -28,6 +28,8 @@ from src.exceptions import (
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
+    DocumentSubjectTag,
+    DocumentTypeTag,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,
@@ -37,6 +39,12 @@ from src.pydantic_models import (
 
 logger = setup_logger(__name__)
 KNOWLEDGEBASE_UPDATE_ATTEMPTS = 3
+
+# Response schema of each document tagging agent, keyed by the ParagraphData field it fills
+DOCUMENT_TAG_SCHEMAS = {
+    "document_subject": DocumentSubjectTag,
+    "document_type": DocumentTypeTag,
+}
 
 # ----- Agent 4: Context Caching with Gemini for Chunk Enrichment
 @dataclass
@@ -49,7 +57,7 @@ class DocumentCachingProcessor:
     knowledgebase_bucket_name: str
     path_to_enrichment_prompt: Path
     knowledgebase_agent_prompt_paths: list[tuple[str, Path]]
-    document_tagging_agent_prompt_paths: list[tuple[type[BaseModel], Path]]
+    document_tagging_agent_prompt_paths: list[tuple[str, Path]]
     thinking_budget_enrichment_chunks: int = 128
     max_concurrent: int = 10
     bucket_name_pdf: Optional[str] = None
@@ -64,8 +72,8 @@ class DocumentCachingProcessor:
             for agent_name, prompt_path in self.knowledgebase_agent_prompt_paths
         ]
         self.document_tagging_agents = [
-            (tag_schema, Path(prompt_path).read_text(encoding="utf-8"))
-            for tag_schema, prompt_path in self.document_tagging_agent_prompt_paths
+            (tag_name, Path(prompt_path).read_text(encoding="utf-8"))
+            for tag_name, prompt_path in self.document_tagging_agent_prompt_paths
         ]
         self.logger = setup_logger(self.__class__.__name__)
         self.gemini_client = self._initialize_client()
@@ -448,12 +456,13 @@ class DocumentCachingProcessor:
     async def run_document_tagging_agent(
             self,
             *,
-            tag_schema: type[BaseModel],
+            tag_name: str,
             agent_prompt: str,
             gcs_uri: str,
             cached_content: Optional[types.CachedContent] = None,
-    ) -> BaseModel:
+    ) -> Any:
         """Run one tagging task over the whole document; the schema restricts the tag to its enum."""
+        tag_schema = DOCUMENT_TAG_SCHEMAS[tag_name]
         cache_name = cached_content.name if cached_content is not None else None
 
         parts = [types.Part.from_text(text=agent_prompt)]
@@ -466,7 +475,7 @@ class DocumentCachingProcessor:
                 )
             )
 
-        self.logger.info("Starting document tagging agent: %s", tag_schema.__name__)
+        self.logger.info("Starting document tagging agent: %s", tag_name)
 
         response = await self.gemini_client.aio.models.generate_content(
             model=self.model_name,
@@ -485,10 +494,10 @@ class DocumentCachingProcessor:
         # parsed is None when the response does not match the schema (e.g. a value outside the enum)
         if response.parsed is None:
             raise ModelValidateSchemaError(
-                f"Document tagging agent {tag_schema.__name__} returned an invalid response"
+                f"Document tagging agent {tag_name} returned an invalid response"
             )
 
-        self.logger.info("Document tagging agent %s returned %s", tag_schema.__name__, response.parsed)
+        self.logger.info("Document tagging agent %s returned %s", tag_name, response.parsed)
         return response.parsed
 
     async def tag_document(
@@ -501,21 +510,21 @@ class DocumentCachingProcessor:
         results = await asyncio.gather(
             *[
                 self.run_document_tagging_agent(
-                    tag_schema=tag_schema,
+                    tag_name=tag_name,
                     agent_prompt=agent_prompt,
                     gcs_uri=gcs_uri,
                     cached_content=cached_content,
                 )
-                for tag_schema, agent_prompt in self.document_tagging_agents
+                for tag_name, agent_prompt in self.document_tagging_agents
             ],
             return_exceptions=True,
         )
 
         tags = {}
-        for (tag_schema, _), result in zip(self.document_tagging_agents, results):
+        for (tag_name, _), result in zip(self.document_tagging_agents, results):
             if isinstance(result, Exception):
                 self.logger.error(
-                    f"Document tagging agent {tag_schema.__name__} failed for {self.blob_path_pdf}; "
+                    f"Document tagging agent {tag_name} failed for {self.blob_path_pdf}; "
                     f"continuing without its tag: {result}"
                 )
                 continue

@@ -3,8 +3,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from collections import defaultdict
 from src.gcs_manager import GCSManager
 from src.exceptions import SummarizerAgentError, BatchPredictionError
-from src.pydantic_models import (DocumentObject, Chunk, ChunkMetaData, ObjectMetaData, ParagraphData,
-                                 DocumentSubjectTag, DocumentTypeTag)
+from src.pydantic_models import DocumentObject, Chunk, ChunkMetaData, ObjectMetaData, ParagraphData
 import asyncio
 import numpy as np
 from src.chunking_types.chunking_utils import ChunkerUtils
@@ -93,9 +92,9 @@ class AgenticChunker(ChunkerUtils):
                                                                    self.prompts_dir / "knowledgebase_extended.md"),
                                                               ],
                                                               document_tagging_agent_prompt_paths=[
-                                                                  (DocumentSubjectTag,
+                                                                  ("document_subject",
                                                                    self.prompts_dir / "document_tagging_subject.md"),
-                                                                  (DocumentTypeTag,
+                                                                  ("document_type",
                                                                    self.prompts_dir / "document_tagging_type.md"),
                                                               ],
                                                               bucket_name_pdf=self.input_bucket_name_pdf,

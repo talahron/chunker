@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 
-from src.agents.caching_agents import DocumentCachingProcessor
+from src.agents.caching_agents import DOCUMENT_TAG_SCHEMAS, DocumentCachingProcessor
 from src.chunking_types.chunking_utils import ChunkerUtils
 from src.exceptions import ModelValidateSchemaError
 from src.pydantic_models import (
@@ -38,8 +38,8 @@ def make_processor():
     processor.thinking_budget_enrichment_chunks = 128
     processor.max_concurrent = 10
     processor.document_tagging_agents = [
-        (DocumentSubjectTag, "subject prompt"),
-        (DocumentTypeTag, "type prompt"),
+        ("document_subject", "subject prompt"),
+        ("document_type", "type prompt"),
     ]
     return processor
 
@@ -50,9 +50,10 @@ class DocumentTagModelsTest(unittest.TestCase):
         self.assertIsNone(chunk.document_subject)
         self.assertIsNone(chunk.document_type)
 
-    def test_every_tag_schema_field_exists_on_paragraph_data(self):
-        for tag_schema in (DocumentSubjectTag, DocumentTypeTag):
-            self.assertLessEqual(set(tag_schema.model_fields), set(ParagraphData.model_fields))
+    def test_every_tag_name_matches_its_schema_and_a_paragraph_field(self):
+        for tag_name, tag_schema in DOCUMENT_TAG_SCHEMAS.items():
+            self.assertEqual(list(tag_schema.model_fields), [tag_name])
+            self.assertIn(tag_name, ParagraphData.model_fields)
 
     def test_tag_rejects_values_outside_the_enum(self):
         with self.assertRaises(ValueError):
@@ -99,7 +100,7 @@ class TagDocumentTest(unittest.IsolatedAsyncioTestCase):
         )
 
         result = await processor.run_document_tagging_agent(
-            tag_schema=DocumentSubjectTag,
+            tag_name="document_subject",
             agent_prompt="subject prompt",
             gcs_uri="gs://pdf/document.pdf",
             cached_content=SimpleNamespace(name="caches/1"),
@@ -124,7 +125,7 @@ class TagDocumentTest(unittest.IsolatedAsyncioTestCase):
         processor.run_document_tagging_agent.retry.sleep = AsyncMock()
 
         result = await processor.run_document_tagging_agent(
-            tag_schema=DocumentTypeTag,
+            tag_name="document_type",
             agent_prompt="type prompt",
             gcs_uri="gs://pdf/document.pdf",
         )

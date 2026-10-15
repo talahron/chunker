@@ -26,7 +26,7 @@ from typing import Dict, Any, List, Tuple, Optional
 import numpy as np
 from langchain_google_vertexai import VertexAIEmbeddings
 from src.gcs_manager import GCSManager
-from src.pydantic_models import ParagraphData, ParagraphLocation, DocumentSubjectTag, DocumentTypeTag
+from src.pydantic_models import ParagraphData, ParagraphLocation
 from src.chunking_types.chunking_utils import ChunkerUtils
 from src.agents.caching_agents import (
     DocumentCachingProcessor,
@@ -136,8 +136,8 @@ class ClusterSemanticChunker(ChunkerUtils):
                 ("extended", self.prompts_dir / "knowledgebase_extended.md"),
             ],
             document_tagging_agent_prompt_paths=[
-                (DocumentSubjectTag, self.prompts_dir / "document_tagging_subject.md"),
-                (DocumentTypeTag, self.prompts_dir / "document_tagging_type.md"),
+                ("document_subject", self.prompts_dir / "document_tagging_subject.md"),
+                ("document_type", self.prompts_dir / "document_tagging_type.md"),
             ],
             bucket_name_pdf=self.input_bucket_name_pdf,
             blob_path_pdf=self.file_name_pdf,
