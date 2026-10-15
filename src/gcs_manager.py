@@ -5,6 +5,7 @@ from functools import wraps
 from google.cloud import storage
 from src.logger import setup_logger
 from src.exceptions import MaxRetriesAttemptsError
+from src.pydantic_models import FileConfig
 import asyncio  # Added for async operations
 
 # Retry wrapper
@@ -48,3 +49,13 @@ class GCSManager:
         blob = bucket.blob(base_name)
         json_text = blob.download_as_text()
         return json.loads(json_text), object_path
+
+    async def load_file_config(self, file_name: str) -> FileConfig:
+        """Load the JSON that holds the route of the processed file.
+        Temporary: reads dummy_file_config.json from the project folder for every file.
+        """
+        dummy_path = Path(__file__).resolve().parent.parent / "dummy_file_config.json"
+        self.logger.info(f"Using dummy file config {dummy_path.name} for {file_name}")
+        file_config = FileConfig(**json.loads(dummy_path.read_text(encoding="utf-8")))
+        self.logger.info(f"File config for {file_name}: {file_config}")
+        return file_config

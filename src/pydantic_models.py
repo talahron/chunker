@@ -1,4 +1,4 @@
-from typing import List, Literal, Optional, Union
+from typing import List, Optional, Union
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -99,11 +99,15 @@ class AgenticResponse(BaseModel):
     )
 
 class ChunkingStrategy(str, Enum):
-    HEADER_CHUNKING = "header"
-    AGENTIC_CHUNKING = "agentic"
-    SEMANTIC_CHUNKING = "semantic"
-    CLUSTER_SEMANTIC_CHUNKING = "cluster"
-    CHARACTER_CHUNKING = "character"
+    HEADER_CHUNKING = "HEADER"
+    AGENTIC_CHUNKING = "AGENTIC"
+    SEMANTIC_CHUNKING = "SEMANTIC"
+    CLUSTER_SEMANTIC_CHUNKING = "CLUSTER"
+    CHARACTER_CHUNKING = "CHARACTER"
+
+class ExtractionModel(str, Enum):
+    GEMINI = "GEMINI"
+    QWEN = "QWEN"
 
 class FileConfig(BaseModel):
     """The route of one processed file - read from the JSON that sits next to the file"""
@@ -114,8 +118,8 @@ class FileConfig(BaseModel):
     CUSTOMER: str
     DISTRICT: str
     CASE_NUMBER: str = ""
-    EXTRACTION_MODEL: Literal["GEMINI", "QWEN"]
-    CHUNKING_TYPE: Literal["HEADER", "AGENTIC", "SEMANTIC", "CLUSTER", "CHARACTER"]
+    EXTRACTION_MODEL: ExtractionModel
+    CHUNKING_TYPE: ChunkingStrategy
     DOCUMENT_CLASSIFICATION: bool
     EVIDENCE_SCALE: bool
     EXTENDED_KNOWLEDGEBASE: bool

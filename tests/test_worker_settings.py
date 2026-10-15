@@ -21,7 +21,6 @@ os.environ.update({
     "INDEX_REGION": "me-west1",
     "VECTOR_BUCKET_NAME_INIT": "rag-index-",
     "KNOWLEDGEBASE_BUCKET_NAME_INIT": "rag-knowledgebase-",
-    "CHUNKING_STRATEGY": "semantic",
     "INCREMENT": "10000",
     "BATCH_SIZE": "500",
     "MODEL_NAME_SENTENCE_SPLITTER": "model",

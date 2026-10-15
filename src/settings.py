@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import ClassVar, Literal, Optional
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from src.pydantic_models import ChunkingStrategy
 import logging
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,6 @@ class Settings(BaseSettings):
     VECTOR_BUCKET_NAME: Optional[str] = None
     KNOWLEDGEBASE_BUCKET_NAME_INIT: str
     KNOWLEDGEBASE_BUCKET_NAME: str = ""
-    CHUNKING_STRATEGY: Optional[ChunkingStrategy] = None  # unused - CHUNKING_TYPE comes from the file config
     INCREMENT: int
     BATCH_SIZE: int
     MODEL_NAME_SENTENCE_SPLITTER: str
