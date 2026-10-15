@@ -25,12 +25,12 @@ from src.exceptions import (
     ModelValidateSchemaError,
     _is_retryable,
 )
-from src.file_config import FileConfig
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
     DocumentClassificationTag,
     EvidenceScaleTag,
+    FileConfig,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,

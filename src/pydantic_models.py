@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import List, Literal, Optional, Union
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -104,6 +104,46 @@ class ChunkingStrategy(str, Enum):
     SEMANTIC_CHUNKING = "semantic"
     CLUSTER_SEMANTIC_CHUNKING = "cluster"
     CHARACTER_CHUNKING = "character"
+
+class FileConfig(BaseModel):
+    """The route of one processed file - read from the JSON that sits next to the file"""
+    INDEX_END_POINT_ID: str
+    INDEX_ID: str
+    PROJECT_ID: str
+    PROJECT_NUMBER: str
+    CUSTOMER: str
+    DISTRICT: str
+    CASE_NUMBER: str = ""
+    EXTRACTION_MODEL: Literal["GEMINI", "QWEN"]
+    CHUNKING_TYPE: Literal["HEADER", "AGENTIC", "SEMANTIC", "CLUSTER", "CHARACTER"]
+    DOCUMENT_CLASSIFICATION: bool
+    EVIDENCE_SCALE: bool
+    EXTENDED_KNOWLEDGEBASE: bool
+
+    def runs_agent(self, agent_name: str) -> bool:
+        """Whether this file runs the given document agent (knowledge base or tagging)"""
+        switches = {
+            "general": True,  # the general knowledge base always runs
+            "extended": self.EXTENDED_KNOWLEDGEBASE,
+            "document_classification": self.DOCUMENT_CLASSIFICATION,
+            "evidence_scale": self.EVIDENCE_SCALE,
+        }
+        return switches[agent_name]
+
+    def knowledgebase_file_name(self, agent_name: str) -> str:
+        """general.md, or general_<CASE_NUMBER>.md when the file belongs to a case"""
+        if self.CASE_NUMBER:
+            return f"{agent_name}_{self.CASE_NUMBER}.md"
+        return f"{agent_name}.md"
+
+    @property
+    def index_parameters(self) -> dict[str, str]:
+        """The keys the Indexer used to read from the index mapping JSON"""
+        return {
+            "INDEX_ID": self.INDEX_ID,
+            "INDEX_END_POINT_ID": self.INDEX_END_POINT_ID,
+            "PROJECT_NUMBER": self.PROJECT_NUMBER,
+        }
 
 # --- LLM DTO Models ---
 class SimpleParagraphData(BaseModel):

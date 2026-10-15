@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 from src.exceptions import ChunkingDataError, IngestToVectorError
 from src.settings import settings
 
@@ -19,14 +21,13 @@ if settings.WORKER_MODE:
 
     raise SystemExit(pub_sub_listener.run_worker())
 
-from src.pydantic_models import ChunkingStrategy
+from src.pydantic_models import ChunkingStrategy, FileConfig
 from src.chunking_types.header_chunking import HeaderChunker
 from src.chunking_types.agentic_chunking import AgenticChunker
 from src.chunking_types.semantic_chunking import SemanticChunker
 from src.chunking_types.character_chunking import CharacterChunker
 from src.chunking_types.cluster_semantic_chunking import ClusterSemanticChunker
 from src.Inserts_data_into_vector_db import Indexer  # keep your existing module name
-from src.file_config import FileConfig, load_file_config
 
 from src.logger import setup_logger, configure_logging
 from src import http_trace
@@ -61,7 +62,7 @@ class ChunkerInitialization:
         self.max_tokens = settings.MAX_TOKENS
         self.min_tokens = settings.MIN_TOKENS
         self.increment = settings.INCREMENT
-        self.chunking_strategy = file_config.CHUNKING_TYPE
+        self.chunking_strategy = ChunkingStrategy(file_config.CHUNKING_TYPE.lower())
         self.max_workers_for_batch_processing = settings.MAX_WORKERS_FOR_BATCH_PROCESSING
 
         # Semantic chunker params
@@ -156,6 +157,22 @@ class IndexerInitialization:
                           index_parameters=self.index_parameters,
                           ).setup()
         return indexer
+
+# Temporary stand-in for the bucket: every file gets this config for now
+DUMMY_FILE_CONFIG_PATH = Path(__file__).resolve().parent / "dummy_file_config.json"
+
+
+async def load_file_config(file_name: str) -> FileConfig:
+    """Load the JSON that holds the route of the processed file"""
+    config_name = f"{Path(file_name).stem}.json"
+    # TODO: replace these two lines with the JSON named after the file in its bucket:
+    #   data, _ = await GCSManager().download_json(settings.FILE_CONFIG_BUCKET_NAME, config_name)
+    logger.info(f"Using dummy file config {DUMMY_FILE_CONFIG_PATH.name} instead of {config_name}")
+    data = json.loads(DUMMY_FILE_CONFIG_PATH.read_text(encoding="utf-8"))
+    file_config = FileConfig(**data)
+    logger.info(f"File config for {file_name}: {file_config}")
+    return file_config
+
 
 async def main():
     """
