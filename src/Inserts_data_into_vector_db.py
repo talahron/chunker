@@ -1,18 +1,29 @@
-from langchain_google_vertexai import VectorSearchVectorStore
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from src.exceptions import DownloadJsonError
-from google.cloud import aiplatform
-from google.cloud import storage
 import json
+from hashlib import sha256
+
+from google.api_core.exceptions import GoogleAPICallError, NotFound
+from google.cloud import aiplatform, storage
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_vertexai import VectorSearchVectorStore
+
+from src.exceptions import DownloadJsonError
 from src.logger import setup_logger
 
+
 class Indexer:
+    required_index_parameters = {
+        "INDEX_ID",
+        "PROJECT_NUMBER",
+        "INDEX_END_POINT_ID",
+    }
+
     def __init__(self,
                  text,
                  meta_data,
                  batch_size,
                  index_mapping_bucket,
                  index_mapping_json_file,
+                 index_mapping_object_prefix,
                  embeddings_model_name,
                  project_name,
                  vector_bucket,
@@ -27,6 +38,7 @@ class Indexer:
 
         self.index_mapping_bucket = index_mapping_bucket
         self.index_mapping_json_file = index_mapping_json_file
+        self.index_mapping_object_prefix = index_mapping_object_prefix
 
         # vector search index initialization parameters
         self.vector_bucket = vector_bucket
@@ -46,31 +58,65 @@ class Indexer:
         self.logger = setup_logger(self.__class__.__name__)
 
     def _post_init_(self):
+        self.logger.info(
+            "Downloading index parameters for project - %s", self.project_name
+        )
         index_parameters = self._load_index_parameters_from_json_file()
-        # extract the index parameters from the json file for the project name
-        try:
-            self.logger.info(f"Downloading index parameters for project - {self.project_name}")
-            index_params_for_project = index_parameters.get(self.project_name)
-            self.index_id = index_params_for_project.get("INDEX_ID")
-            self.project_id = index_params_for_project.get("PROJECT_NUMBER")
-            self.index_endpoint_id = index_params_for_project.get("INDEX_END_POINT_ID")
-            self.logger.info(f"Successfully downloaded index parameters for project - {self.project_name}")
-            # make sure that the parameters are of type string - aiplatform expect type string
-            self.index_id = self.index_id if isinstance(self.index_id, str) else str(self.index_id)
-            self.project_id = self.project_id if isinstance(self.project_id, str) else str(self.project_id)
-            self.index_endpoint_id = self.index_endpoint_id if isinstance(self.index_endpoint_id, str) else str(self.index_endpoint_id)
-        except DownloadJsonError as e:
-            self.logger.error(f"Failed to download index parameters for project - {self.project_name}")
-            raise
+        self.index_id = str(index_parameters["INDEX_ID"])
+        self.project_id = str(index_parameters["PROJECT_NUMBER"])
+        self.index_endpoint_id = str(index_parameters["INDEX_END_POINT_ID"])
+        self.logger.info(
+            "Successfully downloaded index parameters for project - %s",
+            self.project_name,
+        )
+
+    def _download_json_file(self, object_name: str):
+        client = storage.Client()
+        bucket = client.bucket(self.index_mapping_bucket)
+        content = bucket.blob(object_name).download_as_bytes()
+        return json.loads(content)
 
     def _load_index_parameters_from_json_file(self):
-        client = storage.Client()
-        bucket = client.get_bucket(self.index_mapping_bucket)
-        blob = bucket.blob(self.index_mapping_json_file)
-        # Download the file content as a string
-        content = blob.download_as_string()
-        # Parse JSON content
-        return json.loads(content)
+        tenant_object = (
+            f"{self.index_mapping_object_prefix.strip('/')}/"
+            f"{self.project_name}.json"
+        )
+
+        try:
+            index_parameters = self._download_json_file(tenant_object)
+        except NotFound:
+            self.logger.info(
+                "Per-tenant index metadata %s was not found; using legacy mapping %s",
+                tenant_object,
+                self.index_mapping_json_file,
+            )
+            try:
+                legacy_mapping = self._download_json_file(
+                    self.index_mapping_json_file
+                )
+                index_parameters = legacy_mapping.get(self.project_name)
+            except (GoogleAPICallError, json.JSONDecodeError) as exc:
+                raise DownloadJsonError(
+                    f"Failed to read index metadata for {self.project_name}"
+                ) from exc
+        except (GoogleAPICallError, json.JSONDecodeError) as exc:
+            raise DownloadJsonError(
+                f"Failed to read index metadata for {self.project_name}"
+            ) from exc
+
+        if not isinstance(index_parameters, dict):
+            raise DownloadJsonError(
+                f"Index metadata for {self.project_name} is missing or invalid"
+            )
+
+        missing = self.required_index_parameters.difference(index_parameters)
+        if missing:
+            raise DownloadJsonError(
+                "Index metadata for "
+                f"{self.project_name} is missing: {', '.join(sorted(missing))}"
+            )
+
+        return index_parameters
 
     def setup(self):
         # initialize the post init process
@@ -104,6 +150,16 @@ class Indexer:
         return self
 
     async def ingest_data(self):
+        if len(self.text) != len(self.meta_data):
+            raise ValueError("Every indexed chunk must have metadata")
+        chunk_ids = []
+        for metadata in self.meta_data:
+            if not metadata.get("file_name") or metadata.get("chunk_number") is None:
+                raise ValueError("Chunk metadata must identify its source file and chunk number")
+            identity = [self.project_name, metadata["file_name"], metadata["chunk_number"]]
+            chunk_ids.append(sha256(json.dumps(identity, ensure_ascii=True).encode()).hexdigest())
+        if len(set(chunk_ids)) != len(chunk_ids):
+            raise ValueError("Chunk identities must be unique within a document")
         all_ids = []
         total_batches = (len(self.text) + self.batch_size - 1) // self.batch_size
         self.logger.info(f"Starting ingestion of {len(self.text)} texts in {total_batches} batches...")
@@ -118,7 +174,11 @@ class Indexer:
 
             try:
                 # Add batch to the vector DB (async call)
-                batch_ids = await self.store.aadd_texts(texts=batch_texts, metadatas=batch_meta)
+                batch_ids = await self.store.aadd_texts(
+                    texts=batch_texts,
+                    metadatas=batch_meta,
+                    ids=chunk_ids[i : i + self.batch_size],
+                )
                 all_ids.extend(batch_ids)
 
                 # Log insertion result

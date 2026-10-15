@@ -1,6 +1,24 @@
 import asyncio
 from src.exceptions import ChunkingDataError, IngestToVectorError
 from src.settings import settings
+
+if settings.WORKER_MODE:
+    from worker import PubSubListener
+
+    pub_sub_listener = PubSubListener(
+        project_id=settings.GCP_PROJECT_ID,
+        bucket=settings.INPUT_BUCKET_NAME_INIT,
+        worker_stage=settings.WORKER_STAGE,
+        source_bucket_env=settings.WORKER_SOURCE_BUCKET_ENV,
+        worker_subscription=settings.WORKER_SUBSCRIPTION,
+        worker_child_command=settings.WORKER_CHILD_COMMAND,
+        worker_max_messages=settings.WORKER_MAX_MESSAGES,
+        worker_max_lease_seconds=settings.WORKER_MAX_LEASE_SECONDS,
+        worker_shutdown_grace_seconds=settings.WORKER_SHUTDOWN_GRACE_SECONDS,
+    ).setup()
+
+    raise SystemExit(pub_sub_listener.run_worker())
+
 from src.pydantic_models import ChunkingStrategy
 from src.chunking_types.header_chunking import HeaderChunker
 from src.chunking_types.agentic_chunking import AgenticChunker
@@ -114,6 +132,7 @@ class IndexerInitialization:
         self.batch_size = settings.BATCH_SIZE
         self.index_mapping_bucket = settings.INDEX_MAPPING_BUCKET
         self.index_mapping_json_file = settings.INDEX_MAPPING_JSON_FILE
+        self.index_mapping_object_prefix = settings.INDEX_MAPPING_OBJECT_PREFIX
         self.embeddings_model_name = settings.EMBEDDINGS_MODEL_NAME
         self.project_name = settings.PROJECT_NAME
         self.vector_bucket= settings.VECTOR_BUCKET_NAME
@@ -125,6 +144,7 @@ class IndexerInitialization:
                           batch_size=self.batch_size,
                           index_mapping_bucket=self.index_mapping_bucket,
                           index_mapping_json_file=self.index_mapping_json_file,
+                          index_mapping_object_prefix=self.index_mapping_object_prefix,
                           embeddings_model_name=self.embeddings_model_name,
                           project_name=self.project_name,
                           vector_bucket=self.vector_bucket,
@@ -155,6 +175,7 @@ async def main():
         logger.info(f"✅ Finished indexing {len(texts_for_index)} chunks")
     except IngestToVectorError as e:
         logger.error(f'Failed to ingest the Chunk to vector index')
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())
