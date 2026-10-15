@@ -15,8 +15,6 @@ os.environ.update({
     "THINKING_BUDGET_ENRICHMENT_CHUNKER": "128",
     "MAX_TOKENS": "500",
     "MIN_TOKENS": "15",
-    "INDEX_MAPPING_BUCKET": "rag-index-mapping",
-    "INDEX_MAPPING_JSON_FILE": "index_mapping.json",
     "EMBEDDINGS_MODEL_NAME": "embedding-model",
     "INDEX_REGION": "me-west1",
     "VECTOR_BUCKET_NAME_INIT": "rag-index-",

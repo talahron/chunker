@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import AsyncMock
 
-from test_index_metadata import make_indexer
+from indexer_factory import make_indexer
 
 
 class IndexRetryTest(unittest.IsolatedAsyncioTestCase):

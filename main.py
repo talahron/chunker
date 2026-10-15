@@ -134,9 +134,6 @@ class IndexerInitialization:
 
         # Index / Embeddings
         self.batch_size = settings.BATCH_SIZE
-        self.index_mapping_bucket = settings.INDEX_MAPPING_BUCKET
-        self.index_mapping_json_file = settings.INDEX_MAPPING_JSON_FILE
-        self.index_mapping_object_prefix = settings.INDEX_MAPPING_OBJECT_PREFIX
         self.embeddings_model_name = settings.EMBEDDINGS_MODEL_NAME
         self.project_name = settings.PROJECT_NAME
         self.vector_bucket= settings.VECTOR_BUCKET_NAME
@@ -146,14 +143,11 @@ class IndexerInitialization:
         indexer = Indexer(text=self.texts_for_index,
                           meta_data=self.metadata_for_index,
                           batch_size=self.batch_size,
-                          index_mapping_bucket=self.index_mapping_bucket,
-                          index_mapping_json_file=self.index_mapping_json_file,
-                          index_mapping_object_prefix=self.index_mapping_object_prefix,
+                          index_parameters=self.index_parameters,
                           embeddings_model_name=self.embeddings_model_name,
                           project_name=self.project_name,
                           vector_bucket=self.vector_bucket,
                           index_region=self.index_region,
-                          index_parameters=self.index_parameters,
                           ).setup()
         return indexer
 

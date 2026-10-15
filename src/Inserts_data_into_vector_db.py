@@ -1,34 +1,23 @@
 import json
 from hashlib import sha256
 
-from google.api_core.exceptions import GoogleAPICallError, NotFound
-from google.cloud import aiplatform, storage
+from google.cloud import aiplatform
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_vertexai import VectorSearchVectorStore
 
-from src.exceptions import DownloadJsonError
 from src.logger import setup_logger
 
 
 class Indexer:
-    required_index_parameters = {
-        "INDEX_ID",
-        "PROJECT_NUMBER",
-        "INDEX_END_POINT_ID",
-    }
-
     def __init__(self,
                  text,
                  meta_data,
                  batch_size,
-                 index_mapping_bucket,
-                 index_mapping_json_file,
-                 index_mapping_object_prefix,
+                 index_parameters,
                  embeddings_model_name,
                  project_name,
                  vector_bucket,
                  index_region,
-                 index_parameters=None,
                  ) -> None:
         # Input data and configuration
         self.text = text
@@ -37,19 +26,14 @@ class Indexer:
         self.embeddings_model_name = embeddings_model_name
         self.project_name = project_name
 
-        self.index_mapping_bucket = index_mapping_bucket
-        self.index_mapping_json_file = index_mapping_json_file
-        self.index_mapping_object_prefix = index_mapping_object_prefix
-        # INDEX_ID / INDEX_END_POINT_ID / PROJECT_NUMBER from the file config; None -> download the index mapping
-        self.index_parameters = index_parameters
-
         # vector search index initialization parameters
         self.vector_bucket = vector_bucket
         self.bucket_uri = f"gs://{vector_bucket}"
         self.index_region = index_region
-        self.index_id = None  # index_id
-        self.project_id = None  # project_id
-        self.index_endpoint_id = None  # index_endpoint_id
+        # the index of this file, from the file config
+        self.index_id = index_parameters["INDEX_ID"]
+        self.project_id = index_parameters["PROJECT_NUMBER"]
+        self.index_endpoint_id = index_parameters["INDEX_END_POINT_ID"]
 
         # Internal objects initialized later
         self.embeddings = None
@@ -60,72 +44,7 @@ class Indexer:
         # set-up logger
         self.logger = setup_logger(self.__class__.__name__)
 
-    def _post_init_(self):
-        self.logger.info(
-            "Index parameters from %s for project - %s",
-            "the file config" if self.index_parameters else "the index mapping JSON",
-            self.project_name,
-        )
-        index_parameters = self.index_parameters or self._load_index_parameters_from_json_file()
-        self.index_id = str(index_parameters["INDEX_ID"])
-        self.project_id = str(index_parameters["PROJECT_NUMBER"])
-        self.index_endpoint_id = str(index_parameters["INDEX_END_POINT_ID"])
-        self.logger.info(
-            "Index parameters ready for project - %s",
-            self.project_name,
-        )
-
-    def _download_json_file(self, object_name: str):
-        client = storage.Client()
-        bucket = client.bucket(self.index_mapping_bucket)
-        content = bucket.blob(object_name).download_as_bytes()
-        return json.loads(content)
-
-    def _load_index_parameters_from_json_file(self):
-        tenant_object = (
-            f"{self.index_mapping_object_prefix.strip('/')}/"
-            f"{self.project_name}.json"
-        )
-
-        try:
-            index_parameters = self._download_json_file(tenant_object)
-        except NotFound:
-            self.logger.info(
-                "Per-tenant index metadata %s was not found; using legacy mapping %s",
-                tenant_object,
-                self.index_mapping_json_file,
-            )
-            try:
-                legacy_mapping = self._download_json_file(
-                    self.index_mapping_json_file
-                )
-                index_parameters = legacy_mapping.get(self.project_name)
-            except (GoogleAPICallError, json.JSONDecodeError) as exc:
-                raise DownloadJsonError(
-                    f"Failed to read index metadata for {self.project_name}"
-                ) from exc
-        except (GoogleAPICallError, json.JSONDecodeError) as exc:
-            raise DownloadJsonError(
-                f"Failed to read index metadata for {self.project_name}"
-            ) from exc
-
-        if not isinstance(index_parameters, dict):
-            raise DownloadJsonError(
-                f"Index metadata for {self.project_name} is missing or invalid"
-            )
-
-        missing = self.required_index_parameters.difference(index_parameters)
-        if missing:
-            raise DownloadJsonError(
-                "Index metadata for "
-                f"{self.project_name} is missing: {', '.join(sorted(missing))}"
-            )
-
-        return index_parameters
-
     def setup(self):
-        # initialize the post init process
-        self._post_init_()
         # Initialize embedding model for text -> vector
         self.embeddings = GoogleGenerativeAIEmbeddings(model=self.embeddings_model_name,
                                                        project=self.project_id,
