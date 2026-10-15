@@ -92,9 +92,9 @@ class AgenticChunker(ChunkerUtils):
                                                                    self.prompts_dir / "knowledgebase_extended.md"),
                                                               ],
                                                               document_tagging_agent_prompt_paths=[
-                                                                  ("DOCUMENT_CLASSIFICATION",
+                                                                  ("document_classification",
                                                                    self.prompts_dir / "document_classification.md"),
-                                                                  ("EVIDENCE_SCALE",
+                                                                  ("evidence_scale",
                                                                    self.prompts_dir / "evidence_scale.md"),
                                                               ],
                                                               bucket_name_pdf=self.input_bucket_name_pdf,

@@ -42,8 +42,8 @@ KNOWLEDGEBASE_UPDATE_ATTEMPTS = 3
 
 # Response schema of each document tagging agent, keyed by the ParagraphData field it fills
 DOCUMENT_TAG_SCHEMAS = {
-    "DOCUMENT_CLASSIFICATION": DocumentClassificationTag,
-    "EVIDENCE_SCALE": EvidenceScaleTag,
+    "document_classification": DocumentClassificationTag,
+    "evidence_scale": EvidenceScaleTag,
 }
 
 # ----- Agent 4: Context Caching with Gemini for Chunk Enrichment
@@ -603,8 +603,8 @@ class DocumentCachingProcessor:
                 cached_content=cached_content,
             )
             for chunk in chunks:
-                chunk.DOCUMENT_CLASSIFICATION = document_tags.get("DOCUMENT_CLASSIFICATION")
-                chunk.EVIDENCE_SCALE = document_tags.get("EVIDENCE_SCALE")
+                chunk.document_classification = document_tags.get("document_classification")
+                chunk.evidence_scale = document_tags.get("evidence_scale")
 
             semaphore = asyncio.Semaphore(self.max_concurrent)
 

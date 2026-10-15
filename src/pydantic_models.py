@@ -48,18 +48,18 @@ class EvidenceScale(str, Enum):
 
 class DocumentClassificationTag(BaseModel):
     """LLM response schema for the document classification tagging agent"""
-    DOCUMENT_CLASSIFICATION: DocumentClassification = Field(..., description="The classification of the document")
+    document_classification: DocumentClassification = Field(..., description="The classification of the document")
 
 class EvidenceScaleTag(BaseModel):
     """LLM response schema for the evidence scale tagging agent"""
-    EVIDENCE_SCALE: EvidenceScale = Field(..., description="The evidence scale of the document")
+    evidence_scale: EvidenceScale = Field(..., description="The evidence scale of the document")
 
 class ChunkMetaData(BaseModel):
     file_name: str
     chunk_number: float
     pages: str
-    DOCUMENT_CLASSIFICATION: Optional[DocumentClassification] = None
-    EVIDENCE_SCALE: Optional[EvidenceScale] = None
+    document_classification: Optional[DocumentClassification] = None
+    evidence_scale: Optional[EvidenceScale] = None
 
 class SubChunk(BaseModel):
     """Single semantic segment returned from the LLM."""
@@ -88,8 +88,8 @@ class ParagraphData(BaseModel):
     content: str = Field(..., description="Aggregated text of a paragraph")
     location: list[ParagraphLocation] = Field(..., description="The positions of the contents on the page")
     # Document-level tags, set on every chunk by DocumentCachingProcessor
-    DOCUMENT_CLASSIFICATION: Optional[DocumentClassification] = Field(default=None, description="The classification of the source document")
-    EVIDENCE_SCALE: Optional[EvidenceScale] = Field(default=None, description="The evidence scale of the source document")
+    document_classification: Optional[DocumentClassification] = Field(default=None, description="The classification of the source document")
+    evidence_scale: Optional[EvidenceScale] = Field(default=None, description="The evidence scale of the source document")
 
 class AgenticResponse(BaseModel):
     """The expected response format from using agentic chunking"""

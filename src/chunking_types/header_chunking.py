@@ -98,8 +98,8 @@ class HeaderChunker(ChunkerUtils):
                 ("extended", self.prompts_dir / "knowledgebase_extended.md"),
             ],
             document_tagging_agent_prompt_paths=[
-                ("DOCUMENT_CLASSIFICATION", self.prompts_dir / "document_classification.md"),
-                ("EVIDENCE_SCALE", self.prompts_dir / "evidence_scale.md"),
+                ("document_classification", self.prompts_dir / "document_classification.md"),
+                ("evidence_scale", self.prompts_dir / "evidence_scale.md"),
             ],
             bucket_name_pdf=self.input_bucket_name_pdf,
             blob_path_pdf=self.file_name_pdf,

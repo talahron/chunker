@@ -115,8 +115,8 @@ class ChunkerUtils:
                     file_name=file_name,
                     chunk_number=chunk.object_id,
                     pages=pages,
-                    DOCUMENT_CLASSIFICATION=chunk.DOCUMENT_CLASSIFICATION,
-                    EVIDENCE_SCALE=chunk.EVIDENCE_SCALE,
+                    document_classification=chunk.document_classification,
+                    evidence_scale=chunk.evidence_scale,
                 )
             )
         # mode="json" turns the tag enums into plain strings (vector search restricts),
