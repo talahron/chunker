@@ -25,6 +25,7 @@ from src.exceptions import (
     ModelValidateSchemaError,
     _is_retryable,
 )
+from src.file_config import FileConfig
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
@@ -58,6 +59,7 @@ class DocumentCachingProcessor:
     path_to_enrichment_prompt: Path
     knowledgebase_agent_prompt_paths: list[tuple[str, Path]]
     document_tagging_agent_prompt_paths: list[tuple[str, Path]]
+    file_config: FileConfig
     thinking_budget_enrichment_chunks: int = 128
     max_concurrent: int = 10
     bucket_name_pdf: Optional[str] = None
@@ -70,12 +72,19 @@ class DocumentCachingProcessor:
         self.knowledgebase_agents = [
             (agent_name, Path(prompt_path).read_text(encoding="utf-8"))
             for agent_name, prompt_path in self.knowledgebase_agent_prompt_paths
+            if self.file_config.runs_agent(agent_name)
         ]
         self.document_tagging_agents = [
             (tag_name, Path(prompt_path).read_text(encoding="utf-8"))
             for tag_name, prompt_path in self.document_tagging_agent_prompt_paths
+            if self.file_config.runs_agent(tag_name)
         ]
         self.logger = setup_logger(self.__class__.__name__)
+        self.logger.info(
+            "Document agents for this file: knowledge base=%s, tagging=%s",
+            [agent_name for agent_name, _ in self.knowledgebase_agents],
+            [tag_name for tag_name, _ in self.document_tagging_agents],
+        )
         self.gemini_client = self._initialize_client()
         self.storage_client = storage.Client()
 
@@ -558,9 +567,12 @@ class DocumentCachingProcessor:
             document_tasks = {}
 
             try:
+                # One file per agent: general.md, or general_<CASE_NUMBER>.md for a per-case customer
                 knowledgebase_files = {
-                    "general": self._prepare_knowledgebase("general.md"),
-                    "extended": self._prepare_knowledgebase("extended.md"),
+                    agent_name: self._prepare_knowledgebase(
+                        self.file_config.knowledgebase_file_name(agent_name)
+                    )
+                    for agent_name, _ in self.knowledgebase_agents
                 }
 
                 async with asyncio.TaskGroup() as task_group:

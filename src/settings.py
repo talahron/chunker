@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     VECTOR_BUCKET_NAME: Optional[str] = None
     KNOWLEDGEBASE_BUCKET_NAME_INIT: str
     KNOWLEDGEBASE_BUCKET_NAME: str = ""
-    CHUNKING_STRATEGY: ChunkingStrategy
+    CHUNKING_STRATEGY: Optional[ChunkingStrategy] = None  # unused - CHUNKING_TYPE comes from the file config
     INCREMENT: int
     BATCH_SIZE: int
     MODEL_NAME_SENTENCE_SPLITTER: str

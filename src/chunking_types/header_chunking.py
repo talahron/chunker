@@ -33,6 +33,7 @@ class HeaderChunker(ChunkerUtils):
                  project_id,
                  prompts_dir,
                  knowledgebase_bucket_name,
+                 file_config,
                  google_provider_region,
                  embeddings_region,
                  caching_location,
@@ -60,6 +61,7 @@ class HeaderChunker(ChunkerUtils):
         self.project_id = project_id
         self.prompts_dir = prompts_dir
         self.knowledgebase_bucket_name = knowledgebase_bucket_name
+        self.file_config = file_config
         self.google_provider_region = google_provider_region
         self.input_bucket = input_bucket
         self.file_name = file_name
@@ -90,6 +92,7 @@ class HeaderChunker(ChunkerUtils):
             google_provider_region=self.google_provider_region,
             caching_location=self.caching_location,
             knowledgebase_bucket_name=self.knowledgebase_bucket_name,
+            file_config=self.file_config,
             path_to_enrichment_prompt=(
                     self.prompts_dir / "document_context_enrichment.md"
             ),

@@ -28,6 +28,7 @@ class Indexer:
                  project_name,
                  vector_bucket,
                  index_region,
+                 index_parameters=None,
                  ) -> None:
         # Input data and configuration
         self.text = text
@@ -39,6 +40,8 @@ class Indexer:
         self.index_mapping_bucket = index_mapping_bucket
         self.index_mapping_json_file = index_mapping_json_file
         self.index_mapping_object_prefix = index_mapping_object_prefix
+        # INDEX_ID / INDEX_END_POINT_ID / PROJECT_NUMBER from the file config; None -> download the index mapping
+        self.index_parameters = index_parameters
 
         # vector search index initialization parameters
         self.vector_bucket = vector_bucket
@@ -59,14 +62,16 @@ class Indexer:
 
     def _post_init_(self):
         self.logger.info(
-            "Downloading index parameters for project - %s", self.project_name
+            "Index parameters from %s for project - %s",
+            "the file config" if self.index_parameters else "the index mapping JSON",
+            self.project_name,
         )
-        index_parameters = self._load_index_parameters_from_json_file()
+        index_parameters = self.index_parameters or self._load_index_parameters_from_json_file()
         self.index_id = str(index_parameters["INDEX_ID"])
         self.project_id = str(index_parameters["PROJECT_NUMBER"])
         self.index_endpoint_id = str(index_parameters["INDEX_END_POINT_ID"])
         self.logger.info(
-            "Successfully downloaded index parameters for project - %s",
+            "Index parameters ready for project - %s",
             self.project_name,
         )
 

@@ -26,6 +26,7 @@ from src.chunking_types.semantic_chunking import SemanticChunker
 from src.chunking_types.character_chunking import CharacterChunker
 from src.chunking_types.cluster_semantic_chunking import ClusterSemanticChunker
 from src.Inserts_data_into_vector_db import Indexer  # keep your existing module name
+from src.file_config import FileConfig, load_file_config
 
 from src.logger import setup_logger, configure_logging
 from src import http_trace
@@ -36,7 +37,8 @@ logger = setup_logger(__name__)
 
 class ChunkerInitialization:
     # ── construction ──
-    def __init__(self):
+    def __init__(self, file_config: FileConfig):
+        self.file_config = file_config
         self.model_name = settings.MODEL_NAME
         self.model_name_enrichment_chunks = settings.MODEL_NAME_ENRICHMENT_CHUNKER
         self.model_name_sentence_splitter = settings.MODEL_NAME_SENTENCE_SPLITTER
@@ -59,7 +61,7 @@ class ChunkerInitialization:
         self.max_tokens = settings.MAX_TOKENS
         self.min_tokens = settings.MIN_TOKENS
         self.increment = settings.INCREMENT
-        self.chunking_strategy = settings.CHUNKING_STRATEGY
+        self.chunking_strategy = file_config.CHUNKING_TYPE
         self.max_workers_for_batch_processing = settings.MAX_WORKERS_FOR_BATCH_PROCESSING
 
         # Semantic chunker params
@@ -107,6 +109,7 @@ class ChunkerInitialization:
             project_id=self.project_id,
             prompts_dir=self.prompts_dir,
             knowledgebase_bucket_name=self.knowledgebase_bucket_name,
+            file_config=self.file_config,
             google_provider_region=self.google_provider_region,
             embeddings_region=self.embeddings_region,
             caching_location=self.caching_location,
@@ -124,9 +127,10 @@ class ChunkerInitialization:
 
 class IndexerInitialization:
     # ── construction ──
-    def __init__(self, texts_for_index, metadata_for_index):
+    def __init__(self, texts_for_index, metadata_for_index, file_config: FileConfig):
         self.texts_for_index = texts_for_index
         self.metadata_for_index = metadata_for_index
+        self.index_parameters = file_config.index_parameters
 
         # Index / Embeddings
         self.batch_size = settings.BATCH_SIZE
@@ -149,6 +153,7 @@ class IndexerInitialization:
                           project_name=self.project_name,
                           vector_bucket=self.vector_bucket,
                           index_region=self.index_region,
+                          index_parameters=self.index_parameters,
                           ).setup()
         return indexer
 
@@ -158,9 +163,12 @@ async def main():
     """
     logger = setup_logger("main")
 
+    # The route of this file: chunking type, document agents, knowledge base files and index
+    file_config = await load_file_config(settings.FILE_NAME)
+
     try:
         # Build the chunker over the raw document list (it sorts internally)
-        chunker = ChunkerInitialization().setup()
+        chunker = ChunkerInitialization(file_config).setup()
 
         # Creates the chunks ready for the vector database
         texts_for_index, metadata_for_index = await chunker.pipeline()
@@ -170,7 +178,7 @@ async def main():
         raise
     try:
         # Ingest to vector index
-        indexer = IndexerInitialization(texts_for_index, metadata_for_index).setup()
+        indexer = IndexerInitialization(texts_for_index, metadata_for_index, file_config).setup()
         await indexer.ingest_data()
         logger.info(f"✅ Finished indexing {len(texts_for_index)} chunks")
     except IngestToVectorError as e:
