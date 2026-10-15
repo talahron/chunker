@@ -31,14 +31,14 @@ class Chunk(BaseModel):
 
 # --- Document tags: document-level labels spread onto every chunk ---
 # Placeholder values - replace with the real lists.
-class DocumentSubject(str, Enum):
+class DocumentClassification(str, Enum):
     CRIMINAL_LAW = "משפט פלילי"
     CIVIL_LAW = "משפט אזרחי"
     ADMINISTRATIVE_LAW = "משפט מנהלי"
     LABOR_LAW = "דיני עבודה"
     OTHER = "אחר"
 
-class DocumentType(str, Enum):
+class EvidenceScale(str, Enum):
     VERDICT = "פסק דין"
     DECISION = "החלטה"
     CONTRACT = "חוזה"
@@ -46,20 +46,20 @@ class DocumentType(str, Enum):
     CORRESPONDENCE = "התכתבות"
     OTHER = "אחר"
 
-class DocumentSubjectTag(BaseModel):
-    """LLM response schema for the document subject tagging agent"""
-    document_subject: DocumentSubject = Field(..., description="The main subject of the document")
+class DocumentClassificationTag(BaseModel):
+    """LLM response schema for the document classification tagging agent"""
+    DOCUMENT_CLASSIFICATION: DocumentClassification = Field(..., description="The classification of the document")
 
-class DocumentTypeTag(BaseModel):
-    """LLM response schema for the document type tagging agent"""
-    document_type: DocumentType = Field(..., description="The type of the document")
+class EvidenceScaleTag(BaseModel):
+    """LLM response schema for the evidence scale tagging agent"""
+    EVIDENCE_SCALE: EvidenceScale = Field(..., description="The evidence scale of the document")
 
 class ChunkMetaData(BaseModel):
     file_name: str
     chunk_number: float
     pages: str
-    document_subject: Optional[DocumentSubject] = None
-    document_type: Optional[DocumentType] = None
+    DOCUMENT_CLASSIFICATION: Optional[DocumentClassification] = None
+    EVIDENCE_SCALE: Optional[EvidenceScale] = None
 
 class SubChunk(BaseModel):
     """Single semantic segment returned from the LLM."""
@@ -88,8 +88,8 @@ class ParagraphData(BaseModel):
     content: str = Field(..., description="Aggregated text of a paragraph")
     location: list[ParagraphLocation] = Field(..., description="The positions of the contents on the page")
     # Document-level tags, set on every chunk by DocumentCachingProcessor
-    document_subject: Optional[DocumentSubject] = Field(default=None, description="The main subject of the source document")
-    document_type: Optional[DocumentType] = Field(default=None, description="The type of the source document")
+    DOCUMENT_CLASSIFICATION: Optional[DocumentClassification] = Field(default=None, description="The classification of the source document")
+    EVIDENCE_SCALE: Optional[EvidenceScale] = Field(default=None, description="The evidence scale of the source document")
 
 class AgenticResponse(BaseModel):
     """The expected response format from using agentic chunking"""

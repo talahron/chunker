@@ -28,8 +28,8 @@ from src.exceptions import (
 from src.logger import setup_logger
 from src.pydantic_models import (
     AgenticResponse,
-    DocumentSubjectTag,
-    DocumentTypeTag,
+    DocumentClassificationTag,
+    EvidenceScaleTag,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,
@@ -42,8 +42,8 @@ KNOWLEDGEBASE_UPDATE_ATTEMPTS = 3
 
 # Response schema of each document tagging agent, keyed by the ParagraphData field it fills
 DOCUMENT_TAG_SCHEMAS = {
-    "document_subject": DocumentSubjectTag,
-    "document_type": DocumentTypeTag,
+    "DOCUMENT_CLASSIFICATION": DocumentClassificationTag,
+    "EVIDENCE_SCALE": EvidenceScaleTag,
 }
 
 # ----- Agent 4: Context Caching with Gemini for Chunk Enrichment
@@ -603,8 +603,8 @@ class DocumentCachingProcessor:
                 cached_content=cached_content,
             )
             for chunk in chunks:
-                chunk.document_subject = document_tags.get("document_subject")
-                chunk.document_type = document_tags.get("document_type")
+                chunk.DOCUMENT_CLASSIFICATION = document_tags.get("DOCUMENT_CLASSIFICATION")
+                chunk.EVIDENCE_SCALE = document_tags.get("EVIDENCE_SCALE")
 
             semaphore = asyncio.Semaphore(self.max_concurrent)
 
