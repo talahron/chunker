@@ -133,7 +133,7 @@ class TagDocumentTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.evidence_scale, EvidenceScale.DECISION)
         self.assertEqual(generate.await_count, 2)
         parts = generate.call_args.kwargs["contents"][0].parts
-        self.assertEqual(parts[1].file_data.file_uri, "gs://pdf/document.pdf")
+        self.assertEqual(parts[0].file_data.file_uri, "gs://pdf/document.pdf")
 
 
 class PipelineTaggingTest(unittest.IsolatedAsyncioTestCase):
