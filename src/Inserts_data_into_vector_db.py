@@ -1,3 +1,6 @@
+import json
+from hashlib import sha256
+
 from google.cloud import aiplatform
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_vertexai import VectorSearchVectorStore
@@ -73,6 +76,14 @@ class Indexer:
     async def ingest_data(self):
         if len(self.text) != len(self.meta_data):
             raise ValueError("Every indexed chunk must have metadata")
+        chunk_ids = []
+        for metadata in self.meta_data:
+            if not metadata.get("file_name") or metadata.get("chunk_number") is None:
+                raise ValueError("Chunk metadata must identify its source file and chunk number")
+            identity = [self.project_name, metadata["file_name"], metadata["chunk_number"]]
+            chunk_ids.append(sha256(json.dumps(identity, ensure_ascii=True).encode()).hexdigest())
+        if len(set(chunk_ids)) != len(chunk_ids):
+            raise ValueError("Chunk identities must be unique within a document")
         all_ids = []
         total_batches = (len(self.text) + self.batch_size - 1) // self.batch_size
         self.logger.info(f"Starting ingestion of {len(self.text)} texts in {total_batches} batches...")
@@ -90,6 +101,7 @@ class Indexer:
                 batch_ids = await self.store.aadd_texts(
                     texts=batch_texts,
                     metadatas=batch_meta,
+                    ids=chunk_ids[i : i + self.batch_size],
                 )
                 all_ids.extend(batch_ids)
 
