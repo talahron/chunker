@@ -167,6 +167,7 @@ class BuildMetadataTest(unittest.IsolatedAsyncioTestCase):
     async def test_tags_are_flattened_into_chunk_metadata(self):
         utils = ChunkerUtils()
         utils.logger = MagicMock()
+        utils.file_config = SimpleNamespace(CUSTOMER="TNUFA", DISTRICT="NORTH", CASE_NUMBER="2")
         tagged = make_chunk(1.0)
         tagged.document_classification = DocumentClassification.CIVIL_LAW
         tagged.evidence_scale = EvidenceScale.CONTRACT
@@ -181,6 +182,9 @@ class BuildMetadataTest(unittest.IsolatedAsyncioTestCase):
             "pages": "[1]",
             "document_classification": "משפט אזרחי",
             "evidence_scale": "חוזה",
+            "customer": "TNUFA",
+            "district": "NORTH",
+            "case_number": "2",
         })
         self.assertNotIn("document_classification", metadata[1])
         self.assertIs(type(metadata[0]["evidence_scale"]), str)
@@ -190,6 +194,7 @@ class BuildMetadataTest(unittest.IsolatedAsyncioTestCase):
 
         utils = ChunkerUtils()
         utils.logger = MagicMock()
+        utils.file_config = SimpleNamespace(CUSTOMER="TNUFA", DISTRICT="NORTH", CASE_NUMBER="2")
         chunk = make_chunk(1.0)
         chunk.document_classification = DocumentClassification.LABOR_LAW
         chunk.evidence_scale = EvidenceScale.PROCEDURE
@@ -200,6 +205,7 @@ class BuildMetadataTest(unittest.IsolatedAsyncioTestCase):
         restricts = {r.namespace: list(r.allow_list) for r in point.restricts}
         self.assertEqual(restricts["document_classification"], ["דיני עבודה"])
         self.assertEqual(restricts["evidence_scale"], ["נוהל"])
+        self.assertEqual(restricts["case_number"], ["2"])
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ class ChunkerUtils:
         self.base_name = None
         self.increment = None
         self.sentence_agent = None
+        self.file_config = None
         self.document: List[DocumentObject] = []
 
     async def _download_parser_json(self):
@@ -117,6 +118,9 @@ class ChunkerUtils:
                     pages=pages,
                     document_classification=chunk.document_classification,
                     evidence_scale=chunk.evidence_scale,
+                    customer=self.file_config.CUSTOMER,
+                    district=self.file_config.DISTRICT,
+                    case_number=self.file_config.CASE_NUMBER or None,
                 )
             )
         # mode="json" turns the tag enums into plain strings (vector search restricts),

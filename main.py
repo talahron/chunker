@@ -129,9 +129,6 @@ class IndexerInitialization:
     # ── construction ──
     def __init__(self, texts_for_index, metadata_for_index, file_config: FileConfig):
         self.texts_for_index = texts_for_index
-        # The case number is file-level metadata: every chunk of a case file gets it (TNUFA only)
-        if file_config.CASE_NUMBER:
-            metadata_for_index = [{**metadata, "case_number": file_config.CASE_NUMBER} for metadata in metadata_for_index]
         self.metadata_for_index = metadata_for_index
         self.index_parameters = file_config.index_parameters
 

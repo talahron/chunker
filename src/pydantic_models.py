@@ -60,6 +60,10 @@ class ChunkMetaData(BaseModel):
     pages: str
     document_classification: Optional[DocumentClassification] = None
     evidence_scale: Optional[EvidenceScale] = None
+    # File-level route fields from the file config, the same on every chunk of the file
+    customer: str
+    district: str
+    case_number: Optional[str] = None
 
 class SubChunk(BaseModel):
     """Single semantic segment returned from the LLM."""
