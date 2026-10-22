@@ -1,5 +1,6 @@
-from typing import List, Optional, Union
-from pydantic import BaseModel, Field
+import json
+from typing import Any, List, Optional, Union
+from pydantic import BaseModel, ConfigDict, Field, create_model
 from enum import Enum
 from typing import List, Literal, Optional, Union
 
@@ -80,6 +81,34 @@ class FileConfig(BaseModel):
             "INDEX_END_POINT_ID": self.INDEX_END_POINT_ID,
             "PROJECT_NUMBER": self.PROJECT_NUMBER,
         }
+
+# JSON Schema types allowed in PYDANTIC_MODEL; the schema must be flat
+JSON_SCHEMA_TYPES = {"string": str, "boolean": bool, "integer": int, "number": float, "array": list, "object": dict}
+ALLOWED_PROPERTY_KEYS = {"type", "items", "description", "title"}
+
+def create_model_from_json_schema(schema: dict[str, Any] | str, model_name: str = "FileMetadata") -> type[BaseModel]:
+    """Build the model that a file metadata JSON must match: every field required, no extra fields, exact types"""
+    if isinstance(schema, str):
+        schema = json.loads(schema)
+    if schema.get("type", "object") != "object":
+        raise ValueError(f"PYDANTIC_MODEL must describe an object, got type {schema.get('type')!r}")
+
+    fields = {}
+    for name, field_schema in schema.get("properties", {}).items():
+        unsupported = set(field_schema) - ALLOWED_PROPERTY_KEYS
+        if unsupported:
+            raise ValueError(f"PYDANTIC_MODEL field {name!r} uses unsupported keys: {sorted(unsupported)}")
+        field_type = JSON_SCHEMA_TYPES.get(field_schema.get("type"))
+        if field_type is None:
+            raise ValueError(f"PYDANTIC_MODEL field {name!r} has unsupported type {field_schema.get('type')!r}")
+        if field_type is list and "items" in field_schema:
+            item_type = JSON_SCHEMA_TYPES.get(field_schema["items"].get("type"))
+            if item_type in (None, list, dict):
+                raise ValueError(f"PYDANTIC_MODEL field {name!r} must hold a list of simple values")
+            field_type = list[item_type]
+        fields[name] = (field_type, ...)
+
+    return create_model(model_name, __config__=ConfigDict(extra="forbid", strict=True), **fields)
 
 class DocumentClassificationTag(BaseModel):
     """LLM response schema for the document classification tagging agent"""
