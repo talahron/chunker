@@ -42,35 +42,37 @@ class ExtractionModel(str, Enum):
     QWEN = "QWEN"
 
 class FileConfig(BaseModel):
-    """The route of one processed file - read from the JSON that sits next to the file"""
+    """The route of one processed file: its project's index-mapping JSON + its own metadata JSON"""
+    # indexes/{PROJECT_NAME}.json
     INDEX_END_POINT_ID: str
     INDEX_ID: str
     PROJECT_ID: str
     PROJECT_NUMBER: str
-    CUSTOMER: str
-    DISTRICT: str
-    CASE_NUMBER: str = ""
+    CUSTOMER: str  # kept from the JSON; the route is decided by is_case_tenant
     EXTRACTION_MODEL: ExtractionModel
     CHUNKING_TYPE: ChunkingStrategy
-    PYDANTIC_MODEL: Optional[str] = ""
-    DOCUMENT_CLASSIFICATION: bool
-    EVIDENCE_SCALE: bool
+    PYDANTIC_MODEL: Union[dict[str, Any], str]
     EXTENDED_KNOWLEDGEBASE: bool
+    # Not from that JSON
+    is_case_tenant: bool  # PROJECT_NAME == CASE_TENANT_NAME: knowledge base per case and tagging agents
+    file_metadata: dict[str, Any]  # {FILE}.json after it passed PYDANTIC_MODEL
 
     def runs_agent(self, agent_name: str) -> bool:
         """Whether this file runs the given document agent (knowledge base or tagging)"""
         switches = {
             "general": True,  # the general knowledge base always runs
             "extended": self.EXTENDED_KNOWLEDGEBASE,
-            "document_classification": self.DOCUMENT_CLASSIFICATION,
-            "evidence_scale": self.EVIDENCE_SCALE,
+            # Tagging agents run only for the case tenant, by the flags in its file metadata
+            "document_classification": self.is_case_tenant and self.file_metadata.get("DOCUMENT_CLASSIFICATION") is True,
+            "evidence_scale": self.is_case_tenant and self.file_metadata.get("EVIDENCE_SCALE") is True,
         }
         return switches[agent_name]
 
     def knowledgebase_file_name(self, agent_name: str) -> str:
-        """general.md, or general_<CASE_NUMBER>.md when the file belongs to a case"""
-        if self.CASE_NUMBER:
-            return f"{agent_name}_{self.CASE_NUMBER}.md"
+        """general_<CASE_NUMBER>.md for a case tenant file with a case number, otherwise general.md"""
+        case_number = self.file_metadata.get("CASE_NUMBER") if self.is_case_tenant else None
+        if case_number:
+            return f"{agent_name}_{case_number}.md"
         return f"{agent_name}.md"
 
     @property

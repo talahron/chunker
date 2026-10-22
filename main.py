@@ -164,7 +164,7 @@ async def main():
         index_mapping_bucket=settings.INDEX_MAPPING_BUCKET,
         index_mapping_object_prefix=settings.INDEX_MAPPING_OBJECT_PREFIX,
         file_metadata_bucket_name=settings.FILE_METADATA_BUCKET_NAME,
-        use_dummy_file_config=settings.USE_DUMMY_FILE_CONFIG,
+        is_case_tenant=settings.PROJECT_NAME == settings.CASE_TENANT_NAME,
     )
 
     try:

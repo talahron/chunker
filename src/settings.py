@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     VECTOR_BUCKET_NAME: Optional[str] = None
     KNOWLEDGEBASE_BUCKET_NAME_INIT: str
     KNOWLEDGEBASE_BUCKET_NAME: str = ""
-    USE_DUMMY_FILE_CONFIG: bool = False
+    # The tenant whose files get a knowledge base per case and the tagging agents (tnufa in production)
+    CASE_TENANT_NAME: str = "qwen"
     INDEX_MAPPING_BUCKET: str = "moj-gcp-d-rag-index-mapping-bucket"
     INDEX_MAPPING_OBJECT_PREFIX: str = "indexes"
     FILE_METADATA_BUCKET_NAME_INIT: str = "moj-gcp-d-rag-input-"

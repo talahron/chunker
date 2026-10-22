@@ -57,16 +57,9 @@ class GCSManager:
             index_mapping_bucket: str = "",
             index_mapping_object_prefix: str = "indexes",
             file_metadata_bucket_name: str = "",
-            use_dummy_file_config: bool = False,
+            is_case_tenant: bool = False,
     ) -> FileConfig:
         """Load the JSON that holds the route of the processed file."""
-        if use_dummy_file_config:
-            dummy_path = Path(__file__).resolve().parent.parent / "dummy_file_config.json"
-            self.logger.info(f"Using dummy file config {dummy_path.name} for {file_name}")
-            file_config = FileConfig(**json.loads(dummy_path.read_text(encoding="utf-8")))
-            self.logger.info(f"File config for {file_name}: {file_config}")
-            return file_config
-
         # 1. Path in moj-gcp-d-rag-index-mapping-bucket -> indexes/{project_name}.json
         project_blob_name = f"{index_mapping_object_prefix}/{project_name}.json"
 
@@ -90,7 +83,6 @@ class GCSManager:
         file_metadata = file_metadata_model.model_validate(file_data).model_dump(mode="json")
         self.logger.info(f"File metadata for {file_name} matches PYDANTIC_MODEL: {file_metadata}")
 
-        merged_config = {**project_data, **file_data}
-        file_config = FileConfig(**merged_config)
+        file_config = FileConfig(**project_data, is_case_tenant=is_case_tenant, file_metadata=file_metadata)
         self.logger.info(f"File config for {file_name}: {file_config}")
         return file_config
