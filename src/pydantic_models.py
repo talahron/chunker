@@ -1,6 +1,93 @@
 from typing import List, Optional, Union
 from pydantic import BaseModel, Field
 from enum import Enum
+from typing import List, Literal, Optional, Union
+
+# --- Document tags: document-level labels spread onto every chunk ---
+class DocumentClassification(str, Enum):
+    TESTIMONIES_AND_INTERROGATIONS = "עדויות וחקירות באזהרה"
+    POLICE_ACTIONS_SUBSTANTIVE_INVESTIGATION = "פעולות של המשטרה - חקירה מהותית"
+    POLICE_ACTIONS_EVIDENCE_ANALYSIS_SUMMARY = "פעולות של המשטרה - סיכום ניתוח ראיות"
+    POLICE_ACTIONS_TECHNICAL = "פעולות של המשטרה - טכניות בתיק"
+    EVIDENCE_SEIZED_PHYSICAL_EXHIBITS = "ראיות - מוצגים פיזיים שנתפסו"
+    EVIDENCE_BANKING_INFO = "ראיות - מידע בנקאי"
+    EVIDENCE_ACCOUNTING_INFO = "ראיות - מידע חשבונאי"
+    WARRANTS_AND_ORDERS = "צווים"
+    COURT_MOTIONS_PROTOCOLS_DECISIONS = "בקשות, פרוטוקולים והחלטות בית משפט"
+    PUBLIC_SERVANT_CERTIFICATES = "תעודות עובד ציבור ומערכות ציבוריות"
+    INSTITUTIONAL_RECORDS = "רשומות מוסדיות"
+    EXPERT_OPINIONS = "חוות דעת מומחה"
+    WIRETAPPING = "האזנות סתר"
+    DIGITAL_FORENSICS_MOBILE = "פורנזיקה דיגיטלית - הפקות פלאפונים"
+    DIGITAL_FORENSICS_COMPUTERS_EMAILS_MEDIA = "פורנזיקה דיגיטלית - הפקות מיילים / קבצי מחשב / מדיה"
+
+class EvidenceScale(str, Enum):
+    VERDICT = "פסק דין"
+    DECISION = "החלטה"
+    CONTRACT = "חוזה"
+    PROCEDURE = "נוהל"
+    CORRESPONDENCE = "התכתבות"
+    OTHER = "אחר"
+
+class ChunkingStrategy(str, Enum):
+    HEADER_CHUNKING = "HEADER"
+    AGENTIC_CHUNKING = "AGENTIC"
+    SEMANTIC_CHUNKING = "SEMANTIC"
+    CLUSTER_SEMANTIC_CHUNKING = "CLUSTER"
+    CHARACTER_CHUNKING = "CHARACTER"
+
+class ExtractionModel(str, Enum):
+    GEMINI = "GEMINI"
+    QWEN = "QWEN"
+
+class FileConfig(BaseModel):
+    """The route of one processed file - read from the JSON that sits next to the file"""
+    INDEX_END_POINT_ID: str
+    INDEX_ID: str
+    PROJECT_ID: str
+    PROJECT_NUMBER: str
+    CUSTOMER: str
+    DISTRICT: str
+    CASE_NUMBER: str = ""
+    EXTRACTION_MODEL: ExtractionModel
+    CHUNKING_TYPE: ChunkingStrategy
+    PYDANTIC_MODEL: Optional[str] = ""
+    DOCUMENT_CLASSIFICATION: bool
+    EVIDENCE_SCALE: bool
+    EXTENDED_KNOWLEDGEBASE: bool
+
+    def runs_agent(self, agent_name: str) -> bool:
+        """Whether this file runs the given document agent (knowledge base or tagging)"""
+        switches = {
+            "general": True,  # the general knowledge base always runs
+            "extended": self.EXTENDED_KNOWLEDGEBASE,
+            "document_classification": self.DOCUMENT_CLASSIFICATION,
+            "evidence_scale": self.EVIDENCE_SCALE,
+        }
+        return switches[agent_name]
+
+    def knowledgebase_file_name(self, agent_name: str) -> str:
+        """general.md, or general_<CASE_NUMBER>.md when the file belongs to a case"""
+        if self.CASE_NUMBER:
+            return f"{agent_name}_{self.CASE_NUMBER}.md"
+        return f"{agent_name}.md"
+
+    @property
+    def index_parameters(self) -> dict[str, str]:
+        """The keys the Indexer used to read from the index mapping JSON"""
+        return {
+            "INDEX_ID": self.INDEX_ID,
+            "INDEX_END_POINT_ID": self.INDEX_END_POINT_ID,
+            "PROJECT_NUMBER": self.PROJECT_NUMBER,
+        }
+
+class DocumentClassificationTag(BaseModel):
+    """LLM response schema for the document classification tagging agent"""
+    document_classification: DocumentClassification = Field(..., description="The classification of the document")
+
+class EvidenceScaleTag(BaseModel):
+    """LLM response schema for the evidence scale tagging agent"""
+    evidence_scale: EvidenceScale = Field(..., description="The evidence scale of the document")
 
 class DocumentObject(BaseModel):
     object_id: str
@@ -29,41 +116,12 @@ class Chunk(BaseModel):
         # ~4 chars per token (Hebrew heuristic)
         return len(self.content) // 4
 
-# --- Document tags: document-level labels spread onto every chunk ---
-# Placeholder values - replace with the real lists.
-class DocumentClassification(str, Enum):
-    CRIMINAL_LAW = "משפט פלילי"
-    CIVIL_LAW = "משפט אזרחי"
-    ADMINISTRATIVE_LAW = "משפט מנהלי"
-    LABOR_LAW = "דיני עבודה"
-    OTHER = "אחר"
-
-class EvidenceScale(str, Enum):
-    VERDICT = "פסק דין"
-    DECISION = "החלטה"
-    CONTRACT = "חוזה"
-    PROCEDURE = "נוהל"
-    CORRESPONDENCE = "התכתבות"
-    OTHER = "אחר"
-
-class DocumentClassificationTag(BaseModel):
-    """LLM response schema for the document classification tagging agent"""
-    document_classification: DocumentClassification = Field(..., description="The classification of the document")
-
-class EvidenceScaleTag(BaseModel):
-    """LLM response schema for the evidence scale tagging agent"""
-    evidence_scale: EvidenceScale = Field(..., description="The evidence scale of the document")
-
 class ChunkMetaData(BaseModel):
     file_name: str
     chunk_number: float
     pages: str
     document_classification: Optional[DocumentClassification] = None
     evidence_scale: Optional[EvidenceScale] = None
-    # File-level route fields from the file config, the same on every chunk of the file
-    customer: str
-    district: str
-    case_number: Optional[str] = None
 
 class SubChunk(BaseModel):
     """Single semantic segment returned from the LLM."""
@@ -95,6 +153,7 @@ class ParagraphData(BaseModel):
     document_classification: Optional[DocumentClassification] = Field(default=None, description="The classification of the source document")
     evidence_scale: Optional[EvidenceScale] = Field(default=None, description="The evidence scale of the source document")
 
+
 class AgenticResponse(BaseModel):
     """The expected response format from using agentic chunking"""
     paragraphs: list[ParagraphData] = Field(
@@ -102,56 +161,6 @@ class AgenticResponse(BaseModel):
         description="List of aggregated paragraphs in order"
     )
 
-class ChunkingStrategy(str, Enum):
-    HEADER_CHUNKING = "HEADER"
-    AGENTIC_CHUNKING = "AGENTIC"
-    SEMANTIC_CHUNKING = "SEMANTIC"
-    CLUSTER_SEMANTIC_CHUNKING = "CLUSTER"
-    CHARACTER_CHUNKING = "CHARACTER"
-
-class ExtractionModel(str, Enum):
-    GEMINI = "GEMINI"
-    QWEN = "QWEN"
-
-class FileConfig(BaseModel):
-    """The route of one processed file - read from the JSON that sits next to the file"""
-    INDEX_END_POINT_ID: str
-    INDEX_ID: str
-    PROJECT_ID: str
-    PROJECT_NUMBER: str
-    CUSTOMER: str
-    DISTRICT: str
-    CASE_NUMBER: str = ""
-    EXTRACTION_MODEL: ExtractionModel
-    CHUNKING_TYPE: ChunkingStrategy
-    DOCUMENT_CLASSIFICATION: bool
-    EVIDENCE_SCALE: bool
-    EXTENDED_KNOWLEDGEBASE: bool
-
-    def runs_agent(self, agent_name: str) -> bool:
-        """Whether this file runs the given document agent (knowledge base or tagging)"""
-        switches = {
-            "general": True,  # the general knowledge base always runs
-            "extended": self.EXTENDED_KNOWLEDGEBASE,
-            "document_classification": self.DOCUMENT_CLASSIFICATION,
-            "evidence_scale": self.EVIDENCE_SCALE,
-        }
-        return switches[agent_name]
-
-    def knowledgebase_file_name(self, agent_name: str) -> str:
-        """general.md, or general_<CASE_NUMBER>.md when the file belongs to a case"""
-        if self.CASE_NUMBER:
-            return f"{agent_name}_{self.CASE_NUMBER}.md"
-        return f"{agent_name}.md"
-
-    @property
-    def index_parameters(self) -> dict[str, str]:
-        """The keys the Indexer used to read from the index mapping JSON"""
-        return {
-            "INDEX_ID": self.INDEX_ID,
-            "INDEX_END_POINT_ID": self.INDEX_END_POINT_ID,
-            "PROJECT_NUMBER": self.PROJECT_NUMBER,
-        }
 
 # --- LLM DTO Models ---
 class SimpleParagraphData(BaseModel):

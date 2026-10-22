@@ -1,6 +1,8 @@
 import asyncio
 from src.exceptions import ChunkingDataError, IngestToVectorError
 from src.settings import settings
+from src.pydantic_models import ChunkingStrategy, FileConfig
+from src.gcs_manager import GCSManager
 
 if settings.WORKER_MODE:
     from worker import PubSubListener
@@ -19,8 +21,7 @@ if settings.WORKER_MODE:
 
     raise SystemExit(pub_sub_listener.run_worker())
 
-from src.pydantic_models import ChunkingStrategy, FileConfig
-from src.gcs_manager import GCSManager
+from src.pydantic_models import ChunkingStrategy
 from src.chunking_types.header_chunking import HeaderChunker
 from src.chunking_types.agentic_chunking import AgenticChunker
 from src.chunking_types.semantic_chunking import SemanticChunker
@@ -157,8 +158,14 @@ async def main():
     """
     logger = setup_logger("main")
 
-    # The route of this file: chunking type, document agents, knowledge base files and index
-    file_config = await GCSManager().load_file_config(settings.FILE_NAME)
+    file_config = await GCSManager().load_file_config(
+        file_name=settings.FILE_NAME,
+        project_name=settings.PROJECT_NAME,
+        index_mapping_bucket=settings.INDEX_MAPPING_BUCKET,
+        index_mapping_object_prefix=settings.INDEX_MAPPING_OBJECT_PREFIX,
+        file_metadata_bucket_name=settings.FILE_METADATA_BUCKET_NAME,
+        use_dummy_file_config=settings.USE_DUMMY_FILE_CONFIG,
+    )
 
     try:
         # Build the chunker over the raw document list (it sorts internally)

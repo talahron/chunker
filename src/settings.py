@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     VECTOR_BUCKET_NAME: Optional[str] = None
     KNOWLEDGEBASE_BUCKET_NAME_INIT: str
     KNOWLEDGEBASE_BUCKET_NAME: str = ""
+    USE_DUMMY_FILE_CONFIG: bool = False
+    INDEX_MAPPING_BUCKET: str = "moj-gcp-d-rag-index-mapping-bucket"
+    INDEX_MAPPING_OBJECT_PREFIX: str = "indexes"
+    FILE_METADATA_BUCKET_NAME_INIT: str = "moj-gcp-d-rag-input-"
+    FILE_METADATA_BUCKET_NAME: Optional[str] = None
     INCREMENT: int
     BATCH_SIZE: int
     MODEL_NAME_SENTENCE_SPLITTER: str
@@ -66,6 +71,10 @@ class Settings(BaseSettings):
         self.KNOWLEDGEBASE_BUCKET_NAME = (
             self.KNOWLEDGEBASE_BUCKET_NAME
             or f"{self.KNOWLEDGEBASE_BUCKET_NAME_INIT}{self.PROJECT_NAME}"
+        )
+        self.FILE_METADATA_BUCKET_NAME = (
+            self.FILE_METADATA_BUCKET_NAME
+            or f"{self.FILE_METADATA_BUCKET_NAME_INIT}{self.PROJECT_NAME}"
         )
         self.FILE_NAME_PDF = self.FILE_NAME_PDF or f"{Path(self.FILE_NAME).stem}.pdf"
         self._load_credentials()

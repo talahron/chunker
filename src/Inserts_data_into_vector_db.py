@@ -1,8 +1,14 @@
-from google.cloud import aiplatform
+import json
+from hashlib import sha256
+
+from google.api_core.exceptions import GoogleAPICallError, NotFound
+from google.cloud import aiplatform, storage
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_vertexai import VectorSearchVectorStore
 
+from src.exceptions import DownloadJsonError
 from src.logger import setup_logger
+
 
 
 class Indexer:

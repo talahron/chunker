@@ -127,7 +127,6 @@ class AgenticChunker(ChunkerUtils):
                     return batch_paragraphs.paragraphs
                 except Exception as e:
                     self.logger.error(f"failed to process batch - {k} / {len(batch_texts)} - {e}")
-                    return []
 
         tasks = [
             process_single_batch(k, batch)
@@ -137,10 +136,6 @@ class AgenticChunker(ChunkerUtils):
 
         for output in results:
             agentic_paragraph.extend(output)
-
-        # Every batch numbers its paragraphs from 1.0, so renumber them in document order
-        for number, paragraph in enumerate(agentic_paragraph, start=1):
-            paragraph.object_id = float(number)
 
         self.logger.info(
             f"Done! Successfully created agentic paragraphs"

@@ -11,7 +11,7 @@ from google.cloud import storage
 from google.genai import errors as genai_errors
 from google.genai import types
 from google.genai.types import HttpOptions
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from tenacity import (
     retry,
     retry_if_exception,
@@ -26,18 +26,19 @@ from src.exceptions import (
     _is_retryable,
 )
 from src.logger import setup_logger
+from pydantic import ValidationError
+...
 from src.pydantic_models import (
     AgenticResponse,
     DocumentClassificationTag,
     EvidenceScaleTag,
-    FileConfig,
     ParagraphData,
     ParagraphLocation,
     ParagraphPageNumber,
+    FileConfig,
     ParagraphType,
     SimpleAgenticResponse,
 )
-
 logger = setup_logger(__name__)
 KNOWLEDGEBASE_UPDATE_ATTEMPTS = 3
 
@@ -47,7 +48,7 @@ DOCUMENT_TAG_SCHEMAS = {
     "evidence_scale": EvidenceScaleTag,
 }
 
-# ----- Agent 4: Context Caching with Gemini for Chunk Enrichment
+# ----- Agent 1: Context Caching with Gemini for Chunk Enrichment
 @dataclass
 class DocumentCachingProcessor:
     """Run document-level tasks and chunk enrichment using an optional shared cache."""
@@ -135,13 +136,9 @@ class DocumentCachingProcessor:
             ),
         )
         self.logger.info(f"total token number is {response.total_tokens}")
-        above_threshold = response.total_tokens > 1024
         self.logger.info(
-            "total tokens - %s is %s%s",
-            response.total_tokens,
-            "higher then 1024" if response.total_tokens >= 1024 else "less then 1024",
-            " - proceeding with caching" if above_threshold else " cannot proceed with caching",
-        )
+            f"total tokens - {response.total_tokens} is {"less then 4096" if response.total_tokens < 4096 else "higher then 4096"}"
+            f"{" - proceeding with caching" if response.total_tokens > 4096 else " cannot proceed with caching"}")
         return response.total_tokens
 
     def calculate_ttl_minutes(self,
@@ -567,7 +564,7 @@ class DocumentCachingProcessor:
             document_tasks = {}
 
             try:
-                # One file per agent: general.md, or general_<CASE_NUMBER>.md for a per-case customer
+                # One file per agent: general.md, or general_<CASE_NUMBER>.md for a file that belongs to a case
                 knowledgebase_files = {
                     agent_name: self._prepare_knowledgebase(
                         self.file_config.knowledgebase_file_name(agent_name)
@@ -702,7 +699,8 @@ class ContextSentenceSplitAgent:
             project=self.project_id,
             location=self.caching_location,
             http_options=HttpOptions(
-                base_url=f"https://{self.caching_location}-aiplatform.googleapis.com"),
+                base_url=f"https://aiplatform.{self.caching_location}.rep.googleapis.com",
+            ),
         )
         api = client._api_client
         logger.info("httpx clients: sync_hooks=%s async_hooks=%s",
@@ -727,7 +725,7 @@ class ContextSentenceSplitAgent:
         return f"gs://{self.bucket_name_pdf}/{self.blob_path_pdf}"
 
     async def _count_tokens(self, gcs_uri: str) -> int:
-        """Count tokens in the PDF to verify context caching eligibility (min 1024)."""
+        """Count tokens in the PDF to verify context caching eligibility (min 4096 for gemini-3.8-flash)."""
         response = await self.gemini_client.aio.models.count_tokens(
             model=self.model_name,
             contents=types.Content(
@@ -830,7 +828,6 @@ class ContextSentenceSplitAgent:
         self.logger.info(f"Batch {batch_idx} processed successfully")
 
         try:
-            # simple_response = SimpleAgenticResponse.model_validate_json(raw_text)
 
             simple_response: SimpleAgenticResponse = response.parsed
 
@@ -843,7 +840,6 @@ class ContextSentenceSplitAgent:
                     type=[ParagraphType(type=t) for t in p.type],
                     pages=[ParagraphPageNumber(page_number=page) for page in p.pages],
                     location=[ParagraphLocation(locations=p.locations)]
-                    # location=[ParagraphLocation(locations=loc) for loc in p.locations]
                 ))
             self.logger.info(f"Batch {batch_idx} validated and mapped to complex schema successfully")
 
@@ -857,7 +853,7 @@ class ContextSentenceSplitAgent:
         self.logger.info(f"PDF URI: {gcs_uri}")
         num_tokens = await self._count_tokens(gcs_uri)
         cached_content = None
-        if num_tokens >= 1024:
+        if num_tokens > 4096:
             ttl_minutes = self.calculate_ttl_minutes(num_batches=len(batches))
             cached_content = await self._create_cache(gcs_uri, ttl_minutes)
 

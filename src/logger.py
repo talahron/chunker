@@ -22,30 +22,24 @@ def configure_logging(
     if _configured:
         return
 
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
     formatter = logging.Formatter(fmt=_FMT, datefmt=_DATEFMT)
 
     console = logging.StreamHandler(sys.stdout)
     console.setFormatter(formatter)
 
+    file_handler = RotatingFileHandler(
+        log_path, maxBytes=10_000_000, backupCount=5, encoding="utf-8"
+    )
+    file_handler.setFormatter(formatter)
+
     root = logging.getLogger()
     root.handlers.clear()          # discard any stray basicConfig handler
     root.setLevel(level)
     root.addHandler(console)
-
-    # The file handler is best-effort. On Cloud Run stdout is what Cloud Logging
-    # collects, and the filesystem may be read-only or in-memory, so a failure
-    # to open the log file must never stop the job from starting.
-    try:
-        log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = RotatingFileHandler(
-            log_path, maxBytes=10_000_000, backupCount=5, encoding="utf-8"
-        )
-        file_handler.setFormatter(formatter)
-        root.addHandler(file_handler)
-    except OSError as exc:
-        root.warning("File logging disabled (%s: %s); logging to stdout only",
-                     type(exc).__name__, exc)
+    root.addHandler(file_handler)
 
     if log_http:
         # httpx emits: HTTP Request: POST <full url> "200 OK"
