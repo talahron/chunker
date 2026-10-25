@@ -534,7 +534,7 @@ class DocumentCachingProcessor:
                     f"continuing without its tag: {result}"
                 )
                 continue
-            tags.update(result.model_dump())
+            tags.update(result.model_dump(mode="json"))
 
         self.logger.info(f"Document tags for {self.blob_path_pdf}: {tags}")
         return tags
@@ -542,8 +542,9 @@ class DocumentCachingProcessor:
     async def enrich_chunks_pipeline(self,
                                      *,
                                      chunks: List[ParagraphData],
-                                     ttl_minutes: int = None) -> List[ParagraphData]:
-        """pipeline for processing chunks using context caching process"""
+                                     ttl_minutes: int = None) -> tuple[List[ParagraphData], dict[str, Any]]:
+        """pipeline for processing chunks using context caching process.
+        Returns the enriched chunks and the document-level metadata that goes with every one of them"""
 
         # STEP 1 - CREATE THE URI
         gcs_uri, blob = self._upload_pdf_file_to_memory()
@@ -606,14 +607,13 @@ class DocumentCachingProcessor:
                     "Document agents failed; continuing to chunk enrichment."
                 )
 
-            # STEP 5 - TAG THE DOCUMENT AND SPREAD ITS TAGS TO ALL OF ITS CHUNKS
+            # STEP 5 - TAG THE DOCUMENT AND BUILD ITS METADATA FOR THE INDEX
             document_tags = await self.tag_document(
                 gcs_uri=gcs_uri,
                 cached_content=cached_content,
             )
-            for chunk in chunks:
-                chunk.document_classification = document_tags.get("document_classification")
-                chunk.evidence_scale = document_tags.get("evidence_scale")
+            document_metadata = self.file_config.document_metadata(document_tags)
+            self.logger.info(f"Document metadata for {self.blob_path_pdf}: {document_metadata}")
 
             semaphore = asyncio.Semaphore(self.max_concurrent)
 
@@ -649,7 +649,7 @@ class DocumentCachingProcessor:
             if errors:
                 self.logger.info(f"\n{len(errors)}/{len(chunks)} chunks failed.")
 
-            return enriched_chunks_sorted
+            return enriched_chunks_sorted, document_metadata
 
         finally:
             # STEP 8 - DELETE THE CACHE IF ONE WAS CREATED

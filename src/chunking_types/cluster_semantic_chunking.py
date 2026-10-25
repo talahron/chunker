@@ -346,14 +346,14 @@ class ClusterSemanticChunker(ChunkerUtils):
 
         # 5) Enrich each chunk with PDF context.
         self.logger.info("Context caching enrichment: START")
-        enriched_chunks = await self.context_caching_agent.enrich_chunks_pipeline(
+        enriched_chunks, document_metadata = await self.context_caching_agent.enrich_chunks_pipeline(
             chunks=semantic_chunks
         )
         self.logger.info("Context caching enrichment: END")
 
         # 6) Build (contents, metadata) for the indexer.
         self.logger.info("Build content and metadata: START")
-        contents, metadata = await self._build_content_and_metadata(enriched_chunks)
+        contents, metadata = await self._build_content_and_metadata(enriched_chunks, document_metadata)
         self.logger.info("Build content and metadata: END")
 
         self.logger.info(f"ClusterSemanticChunker pipeline: DONE ({len(contents)} chunks)")

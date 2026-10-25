@@ -75,6 +75,14 @@ class FileConfig(BaseModel):
             return f"{agent_name}_{case_number}.md"
         return f"{agent_name}.md"
 
+    def document_metadata(self, tags: dict[str, Any]) -> dict[str, Any]:
+        """The document-level metadata every chunk of this file gets in the index"""
+        if not self.uses_tnufa_route:
+            return dict(self.file_metadata)
+        # On the TNUFA route the flags only switch the tagging agents; the tags they produced go in their place
+        flags = {"DOCUMENT_CLASSIFICATION", "EVIDENCE_SCALE"}
+        return {**{key: value for key, value in self.file_metadata.items() if key not in flags}, **tags}
+
     @property
     def index_parameters(self) -> dict[str, str]:
         """The keys the Indexer used to read from the index mapping JSON"""
@@ -133,8 +141,6 @@ class ChunkMetaData(BaseModel):
     file_name: str
     chunk_number: float
     pages: str
-    document_classification: Optional[DocumentClassification] = None
-    evidence_scale: Optional[EvidenceScale] = None
 
 class SubChunk(BaseModel):
     """Single semantic segment returned from the LLM."""
@@ -162,9 +168,6 @@ class ParagraphData(BaseModel):
     pages: list[ParagraphPageNumber] = Field(..., description="Aggregated page numbers from which the paragraph's content was sourced")
     content: str = Field(..., description="Aggregated text of a paragraph")
     location: list[ParagraphLocation] = Field(..., description="The positions of the contents on the page")
-    # Document-level tags, set on every chunk by DocumentCachingProcessor
-    document_classification: Optional[DocumentClassification] = Field(default=None, description="The classification of the source document")
-    evidence_scale: Optional[EvidenceScale] = Field(default=None, description="The evidence scale of the source document")
 
 
 class AgenticResponse(BaseModel):

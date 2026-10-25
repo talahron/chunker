@@ -95,12 +95,13 @@ class ChunkerUtils:
 
     async def _build_content_and_metadata(self,
                                           agentic_paragraphs: list[ParagraphData],
+                                          document_metadata: dict[str, Any],
                                           contents: list[str] = None,
-                                          metadata: list[ChunkMetaData] = None) -> Tuple[List[str], List[ChunkMetaData]]:
+                                          metadata: list[dict[str, Any]] = None) -> Tuple[List[str], List[dict[str, Any]]]:
         if contents is None:
             contents: list[str] = []
         if metadata is None:
-            metadata: list[ChunkMetaData] = []
+            metadata: list[dict[str, Any]] = []
         # loop over the entire agentic paragraphs to create the content and the metadata
         self.logger.info("Start building content and metadata")
         for k, chunk in enumerate(agentic_paragraphs):
@@ -110,17 +111,10 @@ class ChunkerUtils:
             pages = str(sorted({page.page_number for page in chunk.pages if page.page_number is not None}))
             # save the file name in separate value
             file_name = chunk.file_name if chunk.file_name is not None else ""
-            metadata.append(
-                ChunkMetaData(
-                    file_name=file_name,
-                    chunk_number=chunk.object_id,
-                    pages=pages,
-                    document_classification=chunk.document_classification,
-                    evidence_scale=chunk.evidence_scale,
-                )
-            )
-        # mode="json" turns the tag enums into plain strings (vector search restricts),
-        # exclude_none drops tags whose agent failed
-        metadata_json_schema = [m.model_dump(mode="json", exclude_none=True) for m in metadata]
+
+            # The chunk's own fields, then the document-level metadata (a file metadata field wins on a name clash)
+            chunk_metadata = ChunkMetaData(file_name=file_name, chunk_number=chunk.object_id, pages=pages)
+            metadata.append({**chunk_metadata.model_dump(mode="json"), **document_metadata})
+
         self.logger.info(f"Chunks and Metadata build complete successfully. number of chunks {len(contents)}.")
-        return contents, metadata_json_schema
+        return contents, metadata
