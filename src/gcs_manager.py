@@ -53,17 +53,17 @@ class GCSManager:
     async def load_file_config(
             self,
             file_name: str,
-            tenant_name: str = "",
+            project_name: str = "",
             index_mapping_bucket: str = "",
             index_mapping_object_prefix: str = "indexes",
             file_metadata_bucket_name: str = "",
             uses_tnufa_route: bool = False,
     ) -> FileConfig:
         """Load the JSON that holds the route of the processed file."""
-        # 1. Path in moj-gcp-d-rag-index-mapping-bucket -> indexes/{tenant_name}.json
-        project_blob_name = f"{index_mapping_object_prefix}/{tenant_name}.json"
+        # 1. Path in moj-gcp-d-rag-index-mapping-bucket -> indexes/{project_name}.json
+        project_blob_name = f"{index_mapping_object_prefix}/{project_name}.json"
 
-        # 2. Path in moj-gcp-d-rag-input-{tenant_name} -> {file_name}.json (ensuring .json suffix)
+        # 2. Path in moj-gcp-d-rag-input-{project_name} -> {file_name}.json (ensuring .json suffix)
         file_blob_name = str(Path(file_name).with_suffix(".json"))
 
         self.logger.info(

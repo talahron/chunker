@@ -43,7 +43,7 @@ class ExtractionModel(str, Enum):
 
 class FileConfig(BaseModel):
     """The route of one processed file: its project's index-mapping JSON + its own metadata JSON"""
-    # indexes/{TENANT_NAME}.json
+    # indexes/{PROJECT_NAME}.json
     INDEX_END_POINT_ID: str
     INDEX_ID: str
     PROJECT_ID: str
@@ -54,7 +54,7 @@ class FileConfig(BaseModel):
     PYDANTIC_MODEL: Union[dict[str, Any], str]
     EXTENDED_KNOWLEDGEBASE: bool
     # Not from that JSON
-    uses_tnufa_route: bool  # TENANT_NAME == TNUFA_ROUTE_TENANT_NAME: knowledge base per case and tagging agents
+    uses_tnufa_route: bool  # PROJECT_NAME == TNUFA_TENANT_NAME: knowledge base per case and tagging agents
     file_metadata: dict[str, Any]  # {FILE}.json after it passed PYDANTIC_MODEL
 
     def runs_agent(self, agent_name: str) -> bool:
