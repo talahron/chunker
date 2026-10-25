@@ -76,12 +76,14 @@ class FileConfig(BaseModel):
         return f"{agent_name}.md"
 
     def document_metadata(self, tags: dict[str, Any]) -> dict[str, Any]:
-        """The document-level metadata every chunk of this file gets in the index"""
-        if not self.uses_tnufa_route:
-            return dict(self.file_metadata)
-        # On the TNUFA route the flags only switch the tagging agents; the tags they produced go in their place
-        flags = {"DOCUMENT_CLASSIFICATION", "EVIDENCE_SCALE"}
-        return {**{key: value for key, value in self.file_metadata.items() if key not in flags}, **tags}
+        """The document-level fields that every chunk of this file gets in the index"""
+        metadata = dict(self.file_metadata)
+        if self.uses_tnufa_route:
+            # The flags only decided which tagging agents run, so the index gets the tags instead of the flags
+            metadata.pop("DOCUMENT_CLASSIFICATION", None)
+            metadata.pop("EVIDENCE_SCALE", None)
+            metadata.update(tags)
+        return metadata
 
     @property
     def index_parameters(self) -> dict[str, str]:
