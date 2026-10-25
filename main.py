@@ -136,7 +136,7 @@ class IndexerInitialization:
         # Index / Embeddings
         self.batch_size = settings.BATCH_SIZE
         self.embeddings_model_name = settings.EMBEDDINGS_MODEL_NAME
-        self.project_name = settings.PROJECT_NAME
+        self.project_name = settings.TENANT_NAME
         self.vector_bucket= settings.VECTOR_BUCKET_NAME
         self.index_region = settings.INDEX_REGION
 
@@ -160,11 +160,11 @@ async def main():
 
     file_config = await GCSManager().load_file_config(
         file_name=settings.FILE_NAME,
-        project_name=settings.PROJECT_NAME,
+        tenant_name=settings.TENANT_NAME,
         index_mapping_bucket=settings.INDEX_MAPPING_BUCKET,
         index_mapping_object_prefix=settings.INDEX_MAPPING_OBJECT_PREFIX,
         file_metadata_bucket_name=settings.FILE_METADATA_BUCKET_NAME,
-        is_case_tenant=settings.PROJECT_NAME == settings.CASE_TENANT_NAME,
+        uses_tnufa_route=settings.TENANT_NAME == settings.TNUFA_ROUTE_TENANT_NAME,
     )
 
     try:

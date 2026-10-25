@@ -43,18 +43,18 @@ class ExtractionModel(str, Enum):
 
 class FileConfig(BaseModel):
     """The route of one processed file: its project's index-mapping JSON + its own metadata JSON"""
-    # indexes/{PROJECT_NAME}.json
+    # indexes/{TENANT_NAME}.json
     INDEX_END_POINT_ID: str
     INDEX_ID: str
     PROJECT_ID: str
     PROJECT_NUMBER: str
-    CUSTOMER: str  # kept from the JSON; the route is decided by is_case_tenant
+    CUSTOMER: str  # kept from the JSON; the route is decided by uses_tnufa_route
     EXTRACTION_MODEL: ExtractionModel
     CHUNKING_TYPE: ChunkingStrategy
     PYDANTIC_MODEL: Union[dict[str, Any], str]
     EXTENDED_KNOWLEDGEBASE: bool
     # Not from that JSON
-    is_case_tenant: bool  # PROJECT_NAME == CASE_TENANT_NAME: knowledge base per case and tagging agents
+    uses_tnufa_route: bool  # TENANT_NAME == TNUFA_ROUTE_TENANT_NAME: knowledge base per case and tagging agents
     file_metadata: dict[str, Any]  # {FILE}.json after it passed PYDANTIC_MODEL
 
     def runs_agent(self, agent_name: str) -> bool:
@@ -62,15 +62,15 @@ class FileConfig(BaseModel):
         switches = {
             "general": True,  # the general knowledge base always runs
             "extended": self.EXTENDED_KNOWLEDGEBASE,
-            # Tagging agents run only for the case tenant, by the flags in its file metadata
-            "document_classification": self.is_case_tenant and self.file_metadata.get("DOCUMENT_CLASSIFICATION") is True,
-            "evidence_scale": self.is_case_tenant and self.file_metadata.get("EVIDENCE_SCALE") is True,
+            # Tagging agents run only on the TNUFA route, by the flags in the file metadata
+            "document_classification": self.uses_tnufa_route and self.file_metadata.get("DOCUMENT_CLASSIFICATION") is True,
+            "evidence_scale": self.uses_tnufa_route and self.file_metadata.get("EVIDENCE_SCALE") is True,
         }
         return switches[agent_name]
 
     def knowledgebase_file_name(self, agent_name: str) -> str:
-        """general_<CASE_NUMBER>.md for a case tenant file with a case number, otherwise general.md"""
-        case_number = self.file_metadata.get("CASE_NUMBER") if self.is_case_tenant else None
+        """general_<CASE_NUMBER>.md on the TNUFA route when the file has a case number, otherwise general.md"""
+        case_number = self.file_metadata.get("CASE_NUMBER") if self.uses_tnufa_route else None
         if case_number:
             return f"{agent_name}_{case_number}.md"
         return f"{agent_name}.md"

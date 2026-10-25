@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     INPUT_BUCKET_NAME_INIT_PDF: str
     INPUT_BUCKET_NAME: Optional[str] = None
     INPUT_BUCKET_NAME_PDF: Optional[str] = None
-    PROJECT_NAME: str = ""
+    # The worker passes the tenant as PROJECT_NAME, the name the other pipeline stages use too
+    TENANT_NAME: str = Field(default="", validation_alias="PROJECT_NAME")
     FILE_NAME: str = ""
     FILE_NAME_PDF: Optional[str] = None
     MODEL_NAME: str
@@ -40,8 +41,8 @@ class Settings(BaseSettings):
     VECTOR_BUCKET_NAME: Optional[str] = None
     KNOWLEDGEBASE_BUCKET_NAME_INIT: str
     KNOWLEDGEBASE_BUCKET_NAME: str = ""
-    # The tenant whose files get a knowledge base per case and the tagging agents (tnufa in production)
-    CASE_TENANT_NAME: str = "qwen"
+    # The tenant whose files take the TNUFA route: knowledge base per case and tagging agents (tnufa in production)
+    TNUFA_ROUTE_TENANT_NAME: str = "qwen"
     INDEX_MAPPING_BUCKET: str = "moj-gcp-d-rag-index-mapping-bucket"
     INDEX_MAPPING_OBJECT_PREFIX: str = "indexes"
     FILE_METADATA_BUCKET_NAME_INIT: str = "moj-gcp-d-rag-input-"
@@ -63,19 +64,19 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # create the input bucket and output bucket names
-        self.INPUT_BUCKET_NAME = self.INPUT_BUCKET_NAME or f"{self.INPUT_BUCKET_NAME_INIT}{self.PROJECT_NAME}"
-        self.VECTOR_BUCKET_NAME = self.VECTOR_BUCKET_NAME or f"{self.VECTOR_BUCKET_NAME_INIT}{self.PROJECT_NAME}"
+        self.INPUT_BUCKET_NAME = self.INPUT_BUCKET_NAME or f"{self.INPUT_BUCKET_NAME_INIT}{self.TENANT_NAME}"
+        self.VECTOR_BUCKET_NAME = self.VECTOR_BUCKET_NAME or f"{self.VECTOR_BUCKET_NAME_INIT}{self.TENANT_NAME}"
         self.INPUT_BUCKET_NAME_PDF = (
             self.INPUT_BUCKET_NAME_PDF
-            or f"{self.INPUT_BUCKET_NAME_INIT_PDF}{self.PROJECT_NAME}"
+            or f"{self.INPUT_BUCKET_NAME_INIT_PDF}{self.TENANT_NAME}"
         )
         self.KNOWLEDGEBASE_BUCKET_NAME = (
             self.KNOWLEDGEBASE_BUCKET_NAME
-            or f"{self.KNOWLEDGEBASE_BUCKET_NAME_INIT}{self.PROJECT_NAME}"
+            or f"{self.KNOWLEDGEBASE_BUCKET_NAME_INIT}{self.TENANT_NAME}"
         )
         self.FILE_METADATA_BUCKET_NAME = (
             self.FILE_METADATA_BUCKET_NAME
-            or f"{self.FILE_METADATA_BUCKET_NAME_INIT}{self.PROJECT_NAME}"
+            or f"{self.FILE_METADATA_BUCKET_NAME_INIT}{self.TENANT_NAME}"
         )
         self.FILE_NAME_PDF = self.FILE_NAME_PDF or f"{Path(self.FILE_NAME).stem}.pdf"
         self._load_credentials()

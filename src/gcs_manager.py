@@ -53,17 +53,17 @@ class GCSManager:
     async def load_file_config(
             self,
             file_name: str,
-            project_name: str = "",
+            tenant_name: str = "",
             index_mapping_bucket: str = "",
             index_mapping_object_prefix: str = "indexes",
             file_metadata_bucket_name: str = "",
-            is_case_tenant: bool = False,
+            uses_tnufa_route: bool = False,
     ) -> FileConfig:
         """Load the JSON that holds the route of the processed file."""
-        # 1. Path in moj-gcp-d-rag-index-mapping-bucket -> indexes/{project_name}.json
-        project_blob_name = f"{index_mapping_object_prefix}/{project_name}.json"
+        # 1. Path in moj-gcp-d-rag-index-mapping-bucket -> indexes/{tenant_name}.json
+        project_blob_name = f"{index_mapping_object_prefix}/{tenant_name}.json"
 
-        # 2. Path in moj-gcp-d-rag-input-{project_name} -> {file_name}.json (ensuring .json suffix)
+        # 2. Path in moj-gcp-d-rag-input-{tenant_name} -> {file_name}.json (ensuring .json suffix)
         file_blob_name = str(Path(file_name).with_suffix(".json"))
 
         self.logger.info(
@@ -83,6 +83,6 @@ class GCSManager:
         file_metadata = file_metadata_model.model_validate(file_data).model_dump(mode="json")
         self.logger.info(f"File metadata for {file_name} matches PYDANTIC_MODEL: {file_metadata}")
 
-        file_config = FileConfig(**project_data, is_case_tenant=is_case_tenant, file_metadata=file_metadata)
+        file_config = FileConfig(**project_data, uses_tnufa_route=uses_tnufa_route, file_metadata=file_metadata)
         self.logger.info(f"File config for {file_name}: {file_config}")
         return file_config
