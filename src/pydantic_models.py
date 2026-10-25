@@ -76,7 +76,18 @@ class FileConfig(BaseModel):
         return f"{agent_name}.md"
 
     def document_metadata(self, tags: dict[str, Any]) -> dict[str, Any]:
-        """The document-level fields that every chunk of this file gets in the index"""
+        """The document-level fields that every chunk of this file gets in the index.
+
+        Called once per file in STEP 5 of enrich_chunks_pipeline, after the tagging agents ran.
+        _build_content_and_metadata then adds the result to the metadata of every chunk.
+
+        Regular route: the fields of the file metadata JSON, as they are.
+        TNUFA route: the DOCUMENT_CLASSIFICATION / EVIDENCE_SCALE flags only decided which
+        tagging agents run, so they are dropped and the tags those agents returned take their place.
+        Example: {"DOCUMENT_CLASSIFICATION": true, "DISTRICT": "NORTH", "CASE_NUMBER": "518", "EVIDENCE_SCALE": true}
+        + tags {"document_classification": "צווים", "evidence_scale": "החלטה"}
+        -> {"DISTRICT": "NORTH", "CASE_NUMBER": "518", "document_classification": "צווים", "evidence_scale": "החלטה"}
+        """
         metadata = dict(self.file_metadata)
         if self.uses_tnufa_route:
             # The flags only decided which tagging agents run, so the index gets the tags instead of the flags
