@@ -1,6 +1,7 @@
 import json
 from typing import Any, List, Optional, Union
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from jsonschema import Draft202012Validator
+from pydantic import BaseModel, Field
 from enum import Enum
 from typing import List, Literal, Optional, Union
 
@@ -105,15 +106,14 @@ class FileConfig(BaseModel):
             "PROJECT_NUMBER": self.PROJECT_NUMBER,
         }
 
-# JSON Schema type -> Python type, for the flat schema in PYDANTIC_MODEL
-JSON_SCHEMA_TYPES = {"string": str, "boolean": bool, "integer": int, "number": float, "array": list, "object": dict}
-
-def create_model_from_json_schema(schema: dict[str, Any] | str, model_name: str = "FileMetadata") -> type[BaseModel]:
-    """Build the model that a file metadata JSON must match: every field required, no extra fields, exact types"""
+def validate_file_metadata(schema: dict[str, Any] | str, file_data: dict[str, Any]) -> dict[str, Any]:
+    """Check the file metadata JSON against PYDANTIC_MODEL (types, required, enums, constraints, no extra fields)"""
     if isinstance(schema, str):
         schema = json.loads(schema)
-    fields = {name: (JSON_SCHEMA_TYPES[field["type"]], ...) for name, field in schema["properties"].items()}
-    return create_model(model_name, __config__=ConfigDict(extra="forbid", strict=True), **fields)
+    errors = [f"{list(error.path)}: {error.message}" for error in Draft202012Validator(schema).iter_errors(file_data)]
+    if errors:
+        raise ValueError(f"File metadata does not match PYDANTIC_MODEL: {errors}")
+    return file_data
 
 class DocumentClassificationTag(BaseModel):
     """LLM response schema for the document classification tagging agent"""

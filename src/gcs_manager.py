@@ -6,7 +6,7 @@ from google.cloud import storage
 from src.logger import setup_logger
 from src.exceptions import MaxRetriesAttemptsError
 import asyncio  # Added for async operations
-from src.pydantic_models import FileConfig, create_model_from_json_schema
+from src.pydantic_models import FileConfig, validate_file_metadata
 
 # Retry wrapper
 def retry(max_retries: int = 3, delay: float = 0.2):
@@ -79,8 +79,7 @@ class GCSManager:
         )
 
         # The project's PYDANTIC_MODEL decides exactly what the file metadata JSON must hold
-        file_metadata_model = create_model_from_json_schema(project_data["PYDANTIC_MODEL"])
-        file_metadata = file_metadata_model.model_validate(file_data).model_dump(mode="json")
+        file_metadata = validate_file_metadata(project_data["PYDANTIC_MODEL"], file_data)
         self.logger.info(f"File metadata for {file_name} matches PYDANTIC_MODEL: {file_metadata}")
 
         file_config = FileConfig(**project_data, uses_tnufa_route=uses_tnufa_route, file_metadata=file_metadata)
