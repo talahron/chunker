@@ -1,6 +1,4 @@
-import json
 from typing import Any, List, Optional, Union
-from jsonschema import Draft202012Validator
 from pydantic import BaseModel, Field
 from enum import Enum
 from typing import List, Literal, Optional, Union
@@ -64,8 +62,8 @@ class FileConfig(BaseModel):
             "general": True,  # the general knowledge base always runs
             "extended": self.EXTENDED_KNOWLEDGEBASE,
             # Tagging agents run only on the TNUFA route, by the flags in the file metadata
-            "document_classification": self.uses_tnufa_route and self.file_metadata.get("DOCUMENT_CLASSIFICATION") is True,
-            "evidence_scale": self.uses_tnufa_route and self.file_metadata.get("EVIDENCE_SCALE") is True,
+            "document_classification": all([self.uses_tnufa_route, self.file_metadata.get("DOCUMENT_CLASSIFICATION") is True]),
+            "evidence_scale": all([self.uses_tnufa_route, self.file_metadata.get("EVIDENCE_SCALE") is True]),
         }
         return switches[agent_name]
 
@@ -105,15 +103,6 @@ class FileConfig(BaseModel):
             "INDEX_END_POINT_ID": self.INDEX_END_POINT_ID,
             "PROJECT_NUMBER": self.PROJECT_NUMBER,
         }
-
-def validate_file_metadata(schema: dict[str, Any] | str, file_data: dict[str, Any]) -> dict[str, Any]:
-    """Check the file metadata JSON against PYDANTIC_MODEL (types, required, enums, constraints, no extra fields)"""
-    if isinstance(schema, str):
-        schema = json.loads(schema)
-    errors = [f"{list(error.path)}: {error.message}" for error in Draft202012Validator(schema).iter_errors(file_data)]
-    if errors:
-        raise ValueError(f"File metadata does not match PYDANTIC_MODEL: {errors}")
-    return file_data
 
 class DocumentClassificationTag(BaseModel):
     """LLM response schema for the document classification tagging agent"""

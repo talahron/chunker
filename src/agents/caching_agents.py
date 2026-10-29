@@ -512,29 +512,26 @@ class DocumentCachingProcessor:
             gcs_uri: str,
             cached_content: Optional[types.CachedContent] = None,
     ) -> dict[str, Any]:
-        """Run all tagging agents concurrently and merge their tags; a failed agent's tag is missing."""
-        results = await asyncio.gather(
-            *[
-                self.run_document_tagging_agent(
-                    tag_name=tag_name,
-                    agent_prompt=agent_prompt,
-                    gcs_uri=gcs_uri,
-                    cached_content=cached_content,
+        """Run all tagging agents concurrently and merge their tags; if one agent fails, the whole file fails."""
+        # TaskGroup: the first failure cancels the other agents and raises (an ExceptionGroup) to the caller
+        async with asyncio.TaskGroup() as task_group:
+            tasks = [
+                task_group.create_task(
+                    self.run_document_tagging_agent(
+                        tag_name=tag_name,
+                        agent_prompt=agent_prompt,
+                        gcs_uri=gcs_uri,
+                        cached_content=cached_content,
+                    ),
+                    name=f"tag-{tag_name}",
                 )
                 for tag_name, agent_prompt in self.document_tagging_agents
-            ],
-            return_exceptions=True,
-        )
+            ]
 
+        # Every agent succeeded here - merge their tags into one dict
         tags = {}
-        for (tag_name, _), result in zip(self.document_tagging_agents, results):
-            if isinstance(result, Exception):
-                self.logger.error(
-                    f"Document tagging agent {tag_name} failed for {self.blob_path_pdf}; "
-                    f"continuing without its tag: {result}"
-                )
-                continue
-            tags.update(result.model_dump(mode="json"))
+        for task in tasks:
+            tags.update(task.result().model_dump(mode="json"))
 
         self.logger.info(f"Document tags for {self.blob_path_pdf}: {tags}")
         return tags
